@@ -1,0 +1,7 @@
+supabase
+python-dotenv
+pandas
+streamlit
+fpdf
+scikit-learn
+matplotlib

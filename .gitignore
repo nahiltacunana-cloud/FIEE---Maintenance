@@ -1,0 +1,6 @@
+src/vision_ai/modelo/
+src/vision_ai/dataset/
+.env
+.venv/
+__pycache__/
+*.log
