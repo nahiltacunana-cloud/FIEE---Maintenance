@@ -3,7 +3,6 @@ import pandas as pd
 import random
 import time
 from datetime import datetime
-from fpdf import FPDF
 
 # --- IMPORTS PROPIOS ---
 from src.views.base_view import Vista 
@@ -18,6 +17,9 @@ from src.services.predictive_service import PredictiveService
 # --- NUEVOS IMPORTS PARA LA FACTORY Y EL MAPPER ---
 from src.utils.mapper import EquipoMapper
 from src.equipo_factory import EquipoFactory
+
+# --- ENTREGABLE 7: BUILDER ---
+from src.utils.reporte_builder import ReporteBuilder
 
 # ==============================================================================
 # 0. CLASE PARA EQUIPOS GENÉRICOS
@@ -63,52 +65,59 @@ def convertir_objetos_a_df(_lista_equipos_dict, _trigger):
             })
     return pd.DataFrame(data)
 
-# --- Función PDF Profesional ---
+# --- Función PDF Profesional (PATRÓN BUILDER) ---
 def generar_pdf(equipo, lab):
-    pdf = FPDF()
-    pdf.add_page()
+    builder = ReporteBuilder()
+    builder.agregar_titulo("ORDEN DE TRABAJO Y FICHA TÉCNICA")
     
-    # TÍTULO
-    pdf.set_font('Arial', 'B', 16)
-    pdf.cell(0, 10, f'FICHA TECNICA: {equipo.modelo}', 0, 1, 'C')
-    pdf.ln(5)
-
-    # INFO GENERAL
-    pdf.set_font('Arial', '', 11)
-    pdf.cell(0, 8, f"ID Activo: {equipo.id_activo}", 0, 1)
-    pdf.cell(0, 8, f"Ubicacion: {lab}", 0, 1)
-    pdf.cell(0, 8, f"Fecha Compra: {equipo.fecha_compra}", 0, 1)
-    pdf.cell(0, 8, f"Estado Actual: {equipo.estado.name}", 0, 1)
-    
-    # RESULTADOS
     obs = equipo.calcular_obsolescencia()
-    pdf.set_font('Arial', 'B', 11)
-    pdf.cell(0, 8, f"Nivel de Desgaste Calculado: {obs*100:.2f}%", 0, 1)
-    pdf.ln(5)
+    estado_actual = equipo.estado.name if hasattr(equipo.estado, 'name') else str(equipo.estado)
+    
+    datos = {
+        "ID Activo": equipo.id_activo,
+        "Modelo": equipo.modelo,
+        "Ubicación": lab,
+        "Fecha de Compra": str(equipo.fecha_compra),
+        "Estado Actual": estado_actual,
+        "Desgaste Calculado": f"{obs*100:.2f}%"
+    }
+    builder.agregar_cuerpo(datos)
     
     # HISTORIAL
-    pdf.set_font('Arial', 'B', 12)
-    pdf.cell(0, 10, "Historial de Mantenimiento e Incidencias:", 0, 1)
-    pdf.set_font('Arial', '', 10)
+    builder.pdf.ln(5)
+    builder.pdf.set_font("helvetica", "B", 12)
+    builder.pdf.cell(0, 10, "Historial de Mantenimiento e Incidencias:", new_x="LMARGIN", new_y="NEXT")
+    builder.pdf.set_font("helvetica", "", 10)
     
     if equipo.historial_incidencias:
         for inc in equipo.historial_incidencias:
             fecha = inc.get('fecha', '-')
-            # Limpieza de caracteres (emojis) para evitar crash
-            texto = inc.get('detalle', '-').encode('latin-1', 'ignore').decode('latin-1')
+            texto = inc.get('detalle', '-')
             dictamen = inc.get('dictamen_ia', '')
             
-            pdf.multi_cell(0, 6, f"[{fecha}] {texto}")
+            # 1. Forzamos el cursor al margen izquierdo (10 mm)
+            builder.pdf.set_x(10) 
+            # 2. Le decimos explícitamente a fpdf2 cómo saltar de línea
+            builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto}", new_x="LMARGIN", new_y="NEXT")
+            
             if dictamen:
-                dic_clean = dictamen.encode('latin-1', 'ignore').decode('latin-1')
-                pdf.set_font('Arial', 'I', 9)
-                pdf.multi_cell(0, 6, f"   >> Dictamen IA: {dic_clean}")
-                pdf.set_font('Arial', '', 10)
-            pdf.ln(2)
+                texto_dictamen = f"   >> Dictamen IA: {dictamen}"
+                texto_limpio = texto_dictamen.encode('latin-1', 'replace').decode('latin-1')
+                
+                builder.pdf.set_font("helvetica", "I", 9)
+                builder.pdf.set_x(10) # Volvemos a forzar el cursor a la izquierda
+                builder.pdf.multi_cell(0, 6, texto_limpio, new_x="LMARGIN", new_y="NEXT")
+                builder.pdf.set_font("helvetica", "", 10)
+                
+            builder.pdf.ln(2)
     else:
-        pdf.cell(0, 10, "Sin registros de mantenimiento.", 0, 1)
+        builder.pdf.set_x(10)
+        builder.pdf.cell(0, 10, "Sin registros de mantenimiento.", new_x="LMARGIN", new_y="NEXT")
 
-    return pdf.output(dest='S').encode('latin-1', 'ignore')
+    # Firmas de autorización (Versión Admin)
+    builder.agregar_firmas()
+    
+    return builder.compilar_pdf()
 
 # ==============================================================================
 # 2. VISTA DASHBOARD
@@ -247,12 +256,19 @@ class VistaDashboard(Vista):
                     except Exception as e:
                         st.error(f"No se pudo generar la predicción: {e}")
                         st.info("Asegúrate de haber instalado scikit-learn y matplotlib en tu entorno.")
-                    # ----------------------------------------
                     
                     st.markdown("---")
-                    if st.button("📄 Generar Reporte PDF", key=f"pdf_{eq_sel.id_activo}"):
-                        pdf_bytes = generar_pdf(eq_sel, eq_sel.ubicacion)
-                        st.download_button("⬇️ Descargar PDF", pdf_bytes, file_name=f"Reporte_{eq_sel.id_activo}.pdf", mime="application/pdf")
+                    
+                    # --- NUEVO BOTÓN DE DESCARGA (Entregable 7) ---
+                    pdf_bytes = generar_pdf(eq_sel, getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'))
+                    st.download_button(
+                        label="📄 Descargar Ficha Técnica y Orden de Trabajo", 
+                        data=pdf_bytes, 
+                        file_name=f"Ficha_{eq_sel.id_activo}.pdf", 
+                        mime="application/pdf",
+                        key=f"dl_pdf_{eq_sel.id_activo}",
+                        type="primary"
+                    )
 
                     with st.expander("Historial de Eventos", expanded=True):
                         for inc in eq_sel.historial_incidencias:

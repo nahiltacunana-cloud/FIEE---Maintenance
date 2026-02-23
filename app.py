@@ -2,8 +2,9 @@ import streamlit as st
 import sys
 import os
 
-# 1. Configuración de Rutas
-sys.path.append(os.getcwd())
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+if BASE_DIR not in sys.path:
+    sys.path.insert(0, BASE_DIR)
 
 # 2. Imports del Modelo (Backend)
 from src.models.concretos import Osciloscopio, Multimetro, MotorInduccion
