@@ -1,7 +1,11 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit
 supabase
 python-dotenv
 pandas
-streamlit
-fpdf
+fpdf2
 scikit-learn
 matplotlib
+Pillow
+torch
+transformers
