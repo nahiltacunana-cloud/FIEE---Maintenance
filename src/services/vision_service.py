@@ -93,7 +93,7 @@ class VisionService:
         es_anomalo = any(falla in etiqueta_clean for falla in palabras_falla)
         
         return {
-            "diagnostico": "ANOMALÍA DETECTADA" if es_anomalo else "SIN ANOMALIAS URGENTES DETECTADAS",
+            "diagnostico": "ANOMALÍA DETECTADA" if es_anomalo else "OK: DENTRO DE PARAMETROS NORMALES",
             "detalle": f"Clasificación: {etiqueta.title()} ({confianza:.1f}%)",
             "alerta": es_anomalo
         }

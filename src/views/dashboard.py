@@ -1,9 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
-import time
-from datetime import datetime
-
+from datetime import datetime, timedelta
 # --- IMPORTS PROPIOS ---
 from src.views.base_view import Vista 
 from src.models.equipo import Equipo 
@@ -165,9 +163,7 @@ class VistaDashboard(Vista):
             st.session_state.db_laboratorios = self._cargar_y_agrupar_desde_supabase()
             st.session_state.trigger = 0 
 
-        tab_tabla, tab_detalle, tab_recup, tab_alta = st.tabs([
-            "📋 Inventario", "⚙️ Gestión Técnica", "🚑 Recuperación", "➕ Actualizar Inventario"
-        ])
+        tab_tabla, tab_detalle, tab_recup, tab_alta, tab_bajas = st.tabs(["📋 Inventario", "⚙️ Gestión Técnica", "🚑 Recuperación", "➕ Actualizar Inventario", "🪦 Histórico de Bajas"])
 
         # 1. TABLA GENERAL
         with tab_tabla:
@@ -180,13 +176,15 @@ class VistaDashboard(Vista):
                 df = convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
                 
                 if not df.empty:
+                    # 1. Quitamos la columna de objetos y filtramos los vivos
                     df_show = df.drop(columns=["OBJ_REF"])
+                    df_show = df_show[df_show["Estado"] != "BAJA"] # <-- ¡EL FILTRO SALVADOR!
                     
                     if filtro_lab != "🔍 VER TODOS":
                         df_show = df_show[df_show["Ubicación"] == filtro_lab]
                     
-                    st.dataframe(df_show, use_container_width=True, hide_index=True)
-                    st.caption(f"Mostrando {len(df_show)} registros.")
+                    st.dataframe(df_show, width="stretch", hide_index=True)
+                    st.caption(f"Mostrando {len(df_show)} registros activos.")
                 else:
                     st.info("No hay equipos registrados.")
             else:
@@ -206,21 +204,70 @@ class VistaDashboard(Vista):
                 
                 c1, c2 = st.columns([1, 1])
                 with c1:
-                    st.info(f"Estado: **{eq_sel.estado.name}**")
+                    estado_actual_str = eq_sel.estado.name if hasattr(eq_sel.estado, 'name') else str(eq_sel.estado)
+                    st.info(f"Estado: **{estado_actual_str}**")
                     
                     st.markdown("#### 🤖 Inspección Visual")
                     img = st.file_uploader("Subir foto daño:", type=['jpg','png'], key=f"ia_{eq_sel.id_activo}")
                     if img and st.button("Analizar", key=f"btn_ia_{eq_sel.id_activo}"):
-                        vision = VisionService()
-                        res = vision.analizar_quemadura(img)
-                        eq_sel.historial_incidencias.append({
-                            "fecha": datetime.now().strftime("%Y-%m-%d"),
-                            "detalle": f"IA: {res['alerta']}", "dictamen_ia": res['diagnostico']
-                        })
-                        if res.get('es_critico'): eq_sel.estado = EstadoEquipo.FALLA
-                        EquipoRepository().actualizar_equipo(eq_sel)
-                        st.session_state.trigger = 1
-                        st.rerun()
+                        with st.spinner("Analizando imagen con IA... 🔍"):
+                            vision = VisionService()
+                            res = vision.analizar_quemadura(img)
+                            
+                            # 1. Extraemos los datos previniendo que la IA cambie los nombres
+                            diag = res.get('diagnostico', res.get('dictamen', 'Sin diagnóstico'))
+                            alerta = res.get('alerta', False)
+                            es_critico = res.get('es_critico', alerta) 
+                            
+                            # 2. Guardamos en el historial
+                            eq_sel.historial_incidencias.append({
+                                "fecha": datetime.now().strftime("%Y-%m-%d"),
+                                "detalle": "Inspección Visual IA", 
+                                "dictamen_ia": diag
+                            })
+                            
+                            # 3. Lógica de estados súper robusta
+                            diagnostico_ia = str(diag).upper()
+                            
+                            if es_critico or any(p in diagnostico_ia for p in ["FALLA", "CRÍTIC", "QUEMADURA"]): 
+                                eq_sel.estado = EstadoEquipo.FALLA.name      # <-- Forzamos a que sea String
+                            elif alerta or any(p in diagnostico_ia for p in ["ANOMAL", "MANTENIMIENTO", "DESGASTE", "RIESGO"]):
+                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name # <-- Forzamos a que sea String
+                            hace_una_semana = datetime.now() - timedelta(days=7)
+                            contador = 0
+                            
+                            for inc in eq_sel.historial_incidencias:
+                                try:
+                                    if isinstance(inc, dict):
+                                        fecha_str = str(inc.get("fecha", ""))[:10] 
+                                        if len(fecha_str) == 10:
+                                            fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
+                                            if fecha_dt >= hace_una_semana:
+                                                contador += 1
+                                except:
+                                    pass 
+                                    
+                            st.info(f"📊 MODO DEBUG: El sistema cuenta {contador} reportes recientes válidos.")
+                            
+                            if contador >= 3:
+                                st.error("🚨 UMBRAL SUPERADO: El sistema ha bloqueado el equipo por precaución.")
+                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
+                                import time
+                                time.sleep(4)
+
+                            EquipoRepository().actualizar_equipo(eq_sel)
+                            
+                            # 5. Limpieza TOTAL de la memoria
+                            st.cache_data.clear() 
+                            if 'db_laboratorios' in st.session_state:
+                                del st.session_state['db_laboratorios'] 
+                            st.session_state.trigger = 1
+                            
+                            # 6. Mensaje de éxito y pausa estratégica para Supabase
+                            estado_final = eq_sel.estado.name if hasattr(eq_sel.estado, 'name') else str(eq_sel.estado)
+                            st.success(f"✅ Análisis completado. El equipo pasó a estado: {estado_final}")
+                            time.sleep(1.5) 
+                            st.rerun()
 
                     st.markdown("---")
                     st.markdown("#### 🧠 Algoritmo de Desgaste")
@@ -238,6 +285,20 @@ class VistaDashboard(Vista):
                         st.success(f"Cambiado a modelo {modo_sel}")
                         time.sleep(1)
                         st.rerun()
+                    st.markdown("#### 👨‍🔧 Acción Manual")
+                    if estado_actual_str == "OPERATIVO":
+                        if st.button("🔧 Enviar a Mantenimiento (Manual)", key=f"mant_man_{eq_sel.id_activo}"):
+                            eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
+                            eq_sel.historial_incidencias.append({
+                                "fecha": datetime.now().strftime("%Y-%m-%d"),
+                                "detalle": "REPORTE MANUAL: Enviado a mantenimiento por quejas de usuarios."
+                            })
+                            EquipoRepository().actualizar_equipo(eq_sel)
+                            st.cache_data.clear()
+                            if 'db_laboratorios' in st.session_state:
+                                del st.session_state['db_laboratorios']
+                            st.session_state.trigger = 1
+                            st.rerun()
 
                 with c2:
                     obs = eq_sel.calcular_obsolescencia()
@@ -285,26 +346,46 @@ class VistaDashboard(Vista):
             if isinstance(st.session_state.db_laboratorios, dict):
                 for lab_n, lista in st.session_state.db_laboratorios.items():
                     for e in lista:
-                        if e.estado.name != "OPERATIVO": observados.append((lab_n, e))
+                        # Protección: leemos el estado independientemente de si es Enum o String
+                        estado_str = e.estado.name if hasattr(e.estado, 'name') else str(e.estado)
+                        if estado_str not in ["OPERATIVO", "BAJA"]:
+                            observados.append((lab_n, e))
             
             if not observados:
                 st.success("✅ Todo el inventario está operativo.")
             else:
-                sel_obs = st.selectbox("Equipo a reparar:", range(len(observados)), 
-                                     format_func=lambda i: f"{observados[i][1].modelo} ({observados[i][1].estado.name})")
+                sel_obs = st.selectbox("Equipo a reparar:", range(len(observados)), format_func=lambda i: f"{observados[i][1].modelo} ({observados[i][1].estado.name if hasattr(observados[i][1].estado, 'name') else str(observados[i][1].estado)})")
                 lab_origen, eq_rep = observados[sel_obs]
                 
                 with st.form("form_rep"):
-                    st.write(f"Reparando: **{eq_rep.modelo}** del **{lab_origen}**")
-                    informe = st.text_area("Detalle Técnico de la Reparación:")
-                    if st.form_submit_button("✅ Dar de Alta (Reingreso)"):
-                        eq_rep.estado = EstadoEquipo.OPERATIVO
-                        eq_rep.historial_incidencias.append({
-                            "fecha": datetime.now().strftime("%Y-%m-%d"), "detalle": f"REPARACIÓN: {informe}"
-                        })
-                        EquipoRepository().actualizar_equipo(eq_rep)
-                        st.session_state.trigger = 1
-                        st.rerun()
+                    st.write(f"Gestionando: **{eq_rep.modelo}** del **{lab_origen}**")
+                    informe = st.text_area("Detalle Técnico o Motivo de Baja:")
+                    
+                    # Creamos dos columnas para los botones
+                    col1, col2 = st.columns(2)
+                    
+                    with col1:
+                        if st.form_submit_button("✅ Dar de Alta (Reingreso)"):
+                            eq_rep.estado = EstadoEquipo.OPERATIVO.name
+                            eq_rep.historial_incidencias.append({
+                                "fecha": datetime.now().strftime("%Y-%m-%d"), 
+                                "detalle": f"REPARACIÓN/ALTA: {informe}"
+                            })
+                            EquipoRepository().actualizar_equipo(eq_rep)
+                            st.session_state.trigger = 1
+                            st.rerun()
+                            
+                    with col2:
+                        if st.form_submit_button("🚨 Dar de Baja (Descarte)"):
+                            # CAMBIAMOS EL ESTADO A DADO DE BAJA
+                            eq_rep.estado = "BAJA" 
+                            eq_rep.historial_incidencias.append({
+                                "fecha": datetime.now().strftime("%Y-%m-%d"), 
+                                "detalle": f"BAJA DEFINITIVA: {informe}"
+                            })
+                            EquipoRepository().actualizar_equipo(eq_rep)
+                            st.session_state.trigger = 1
+                            st.rerun()
 
         # 4. ALTA INVENTARIO
         with tab_alta:
@@ -378,3 +459,18 @@ class VistaDashboard(Vista):
                     EquipoRepository().guardar_equipo(new)
                     st.session_state.trigger = 1
                     st.rerun()
+            with tab_bajas:
+                st.subheader("🪦 Cementerio de Equipos (Histórico de Bajas)")
+                st.markdown("Registro permanente de activos retirados por obsolescencia, daño irreparable o descarte.")
+            
+                df = convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
+            
+                if not df.empty:
+                    df_caidos = df[df["Estado"] == "BAJA"].drop(columns=["OBJ_REF"])
+                    if not df_caidos.empty:
+                        st.dataframe(df_caidos, width="stretch", hide_index=True)
+                        st.error(f"Total de equipos inactivos: {len(df_caidos)}")
+                    else:
+                        st.success("🌟 ¡Excelente! Ningún equipo ha sido dado de baja todavía.")
+                else:
+                    st.info("No hay datos en el sistema.")

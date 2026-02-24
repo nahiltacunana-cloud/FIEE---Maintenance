@@ -1,6 +1,7 @@
 import streamlit as st
 import time
 import os
+from datetime import datetime, timedelta
 from src.views.base_view import Vista
 from src.utils.enums import EstadoEquipo
 from src.repositories.equipo_repository import EquipoRepository # <--- NUEVO
@@ -99,11 +100,16 @@ class VistaInspeccion(Vista):
                                         alerta = resultado.get('alerta', False)
                                         
                                         # Armamos el texto final
-                                        dictamen_ia = f"IA: {diag} - {det}"
+                                        diagnostico_ia = str(diag).upper()
+                                        dictamen_ia = f"IA: {diagnostico_ia} - {det}"
                                         
-                                        # La IA decide si cambia el estado a mantenimiento
-                                        if alerta:
+                                        diagnostico_ia = str(resultado.get('diagnostico', '')).upper()
+                                        if resultado.get('es_critico'):
+                                            equipo_encontrado.estado = EstadoEquipo.FALLA
+                                        elif "ANOMAL" in diagnostico_ia:
                                             equipo_encontrado.estado = EstadoEquipo.EN_MANTENIMIENTO
+                                        EquipoRepository().actualizar_equipo(equipo_encontrado)
+                                        st.session_state.trigger = 1
                                             
                                     else:
                                         dictamen_ia = "IA no conectada."
@@ -118,7 +124,30 @@ class VistaInspeccion(Vista):
                         equipo_encontrado.registrar_incidencia(detalle_log)
                         ultimo_ticket = equipo_encontrado.historial_incidencias[-1]
                         ultimo_ticket['dictamen_ia'] = dictamen_ia
+                        hace_una_semana = datetime.now() - timedelta(days=7)
+                        contador = 0
+                        
+                        for inc in equipo_encontrado.historial_incidencias:
+                            try:
+                                if isinstance(inc, dict):
+                                    fecha_str = str(inc.get("fecha", ""))[:10] 
+                                    if len(fecha_str) == 10:
+                                        fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
+                                        if fecha_dt >= hace_una_semana:
+                                            contador += 1
+                            except:
+                                pass # Ignora formatos raros de fechas pasadas
+                        
+                        # Si llega a 3, bloquea el equipo y frena la pantalla 4 segundos
+                        if contador >= 3:
+                            equipo_encontrado.estado = EstadoEquipo.EN_MANTENIMIENTO
+                            st.error("🚨 LÍMITE ALCANZADO: El equipo ha recibido 3 reportes recientes y pasará a Mantenimiento Automático.")
+                            time.sleep(4) 
+                        # === FIN DEL SUPERVISOR ===
 
+                        # --- PERSISTENCIA SUPABASE ---
+                        repo = EquipoRepository()
+                        repo.actualizar_equipo(equipo_encontrado)
                         # --- PERSISTENCIA SUPABASE ---
                         repo = EquipoRepository()
                         repo.actualizar_equipo(equipo_encontrado)
@@ -130,14 +159,14 @@ class VistaInspeccion(Vista):
                             # 1. Construimos el PDF en RAM
                             builder = ReporteBuilder()
                             builder.agregar_titulo("TICKET DE REPORTE - ESTUDIANTE")
-                            
+                            texto_ia_pdf = dictamen_ia[:55] + "..." if len(dictamen_ia) > 55 else dictamen_ia
                             datos_ticket = {
                                 "ID Activo": equipo_encontrado.id_activo,
                                 "Equipo": equipo_encontrado.modelo,
                                 "Ubicación": lab_ubicacion,
                                 "Reportado por": usuario,
                                 "Descripción": descripcion,
-                                "Diagnóstico IA": dictamen_ia
+                                "Diagnóstico IA": texto_ia_pdf
                             }
                             builder.agregar_cuerpo(datos_ticket)
                             

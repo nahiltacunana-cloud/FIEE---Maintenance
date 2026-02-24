@@ -60,17 +60,31 @@ class EquipoRepository:
             return []
 
     def actualizar_equipo(self, equipo):
-        """Actualiza un equipo existente (Para cuando agregas reportes o cambias estrategia)"""
+        """Actualiza un equipo existente asegurando que los datos sean compatibles con Supabase"""
         if not self.client: return
 
+        # 1. Asegurar que el estado sea un texto
+        estado_final = equipo.estado.name if hasattr(equipo.estado, 'name') else str(equipo.estado)
+
+        # 2. Convertir el historial a diccionarios (JSON compatible) para que no se borre
+        historial_seguro = []
+        for evento in equipo.historial_incidencias:
+            if isinstance(evento, dict):
+                historial_seguro.append(evento)
+            elif hasattr(evento, '__dict__'):
+                historial_seguro.append(evento.__dict__)
+            else:
+                historial_seguro.append(str(evento))
+
+        # 3. Preparar los datos
         datos_actualizados = {
-            "historial_incidencias": equipo.historial_incidencias,
-            "estrategia_nombre": "DesgasteLineal" if "Lineal" in str(type(equipo.estrategia_desgaste)) else "DesgasteExponencial"
+            "historial_incidencias": historial_seguro, # ¡Ahora sí es compatible!
+            "estrategia_nombre": "DesgasteLineal" if "Lineal" in str(type(equipo.estrategia_desgaste)) else "DesgasteExponencial",
+            "estado": estado_final
         }
         
         try:
-            # Busca por id_activo y actualiza
             self.client.table("equipos").update(datos_actualizados).eq("id_activo", equipo.id_activo).execute()
-            print(f"✅ Actualizado: {equipo.modelo}")
+            print(f"✅ Equipo {equipo.modelo} actualizado correctamente en la BD.")
         except Exception as e:
-            print(f"❌ Error actualizando: {e}")
+            print(f"❌ Error actualizando equipo en BD: {e}")
