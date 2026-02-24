@@ -1,5 +1,6 @@
 src/vision_ai/modelo/
 src/vision_ai/dataset/
+.streamlit/
 .env
 .venv/
 __pycache__/
