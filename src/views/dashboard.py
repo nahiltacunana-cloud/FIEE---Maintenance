@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import random
+import time
 from datetime import datetime, timedelta
 # --- IMPORTS PROPIOS ---
 from src.views.base_view import Vista 

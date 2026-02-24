@@ -7,4 +7,7 @@ class IEstrategiaDesgaste(ABC):
     """
     @abstractmethod
     def calcular(self, fecha_compra: str) -> float:
+        """
+        Calcula el porcentaje de desgaste u obsolescencia basado en la fecha.
+        """
         pass

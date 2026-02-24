@@ -6,6 +6,10 @@ from PIL import Image
 from transformers import AutoImageProcessor, AutoModelForImageClassification
 
 class VisionService:
+    """
+    Servicio de Visión Computacional basado en Transformers para el 
+    diagnóstico automatizado de daños en componentes físicos.
+    """
     def __init__(self):
         """Constructor: Inicializa el cerebro de visión artificial."""
         self.__model_path = self.__obtener_ruta_modelo()
@@ -19,26 +23,19 @@ class VisionService:
         print("="*50 + "\n")
 
     def __obtener_ruta_modelo(self) -> str:
-        """
-        RASTREADOR INDESTRUCTIBLE: Escanea las carpetas hacia arriba 
-        hasta encontrar 'vision_ai/modelo'.
-        """
-        # Empezamos donde está este archivo físico
+        """Localiza dinámicamente el directorio del modelo pre-entrenado."""
         directorio_actual = os.path.abspath(os.path.dirname(__file__))
         
-        # Subimos hasta 4 niveles buscando la carpeta
         for _ in range(4):
             posible_ruta = os.path.join(directorio_actual, "vision_ai", "modelo")
             if os.path.exists(posible_ruta):
                 return posible_ruta
-            # Si no está, subimos un nivel de carpeta
             directorio_actual = os.path.dirname(directorio_actual)
             
-        # Si falla todo, asumimos una ruta por defecto
         return os.path.join(os.getcwd(), "vision_ai", "modelo")
 
     def __cargar_modelo(self):
-        """Carga el modelo Vision Transformer de forma privada."""
+        """Carga los pesos y el procesador del modelo ViT (Vision Transformer)."""
         print(f"🔍 Ruta detectada: {self.__model_path}")
         
         if os.path.exists(self.__model_path):
@@ -46,17 +43,19 @@ class VisionService:
                 self.processor = AutoImageProcessor.from_pretrained(self.__model_path)
                 self.model = AutoModelForImageClassification.from_pretrained(self.__model_path)
                 self.modelo_cargado = True
-                print(f"✅ ¡ÉXITO! Modelo de diagnóstico cargado y listo para usar.")
             except Exception as e:
-                print(f"❌ ERROR CRÍTICO al leer los archivos de la IA: {e}")
+                print(f"Log: Error en carga de tensores IA: {e}")
         else:
-            print(f"⚠️ ALERTA: La carpeta sigue sin existir en esa ruta.")
+            print(f"Log: Repositorio de modelos no localizado en {self.__model_path}")
 
     def analizar_estado(self, datos_imagen):
-        """Punto de entrada para analizar CUALQUIER tipo de daño."""
+        """
+        Realiza la inferencia sobre una imagen para detectar anomalías físicas.
+        :param datos_imagen: Archivo de imagen o buffer de bytes.
+        :return: dict con el diagnóstico y nivel de confianza.
+        """
         if not self.modelo_cargado:
             return self.__respuesta_error("IA no disponible. Revise la terminal.")
-
         try:
             imagen = self.__preprocesar(datos_imagen)
             inputs = self.processor(images=imagen, return_tensors="pt")
@@ -72,21 +71,20 @@ class VisionService:
             return self.__procesar_diagnostico(etiqueta_raw, confianza)
         except Exception as e:
             return self.__respuesta_error(str(e))
-
     # --- ALIAS DE COMPATIBILIDAD ---
-    # Por si tu archivo inspeccion.py todavía usa este nombre viejo
+    # Mantenemos este nombre por si las vistas aún lo requieren
     def analizar_quemadura(self, datos_imagen):
         return self.analizar_estado(datos_imagen)
 
     def __preprocesar(self, data):
-        """Convierte la entrada en una imagen compatible."""
+        """Prepara la imagen para el formato de entrada del Transformer."""
         if hasattr(data, 'read'):
             data.seek(0)
             return Image.open(io.BytesIO(data.read())).convert("RGB")
         return Image.open(data).convert("RGB")
 
     def __procesar_diagnostico(self, etiqueta: str, confianza: float):
-        """Determina si hay anomalía basándose en palabras clave."""
+        """Lógica de decisión basada en el mapeo de etiquetas del modelo."""
         etiqueta_clean = etiqueta.lower()
         palabras_falla = ["quemado", "danado", "damaged", "burned", "roto", "broken", "falla"]
         

@@ -3,7 +3,10 @@ from datetime import datetime
 from src.interfaces.estrategias import IEstrategiaDesgaste 
 
 class DesgasteLineal(IEstrategiaDesgaste):
-    """Implementación para equipos con desgaste constante anual"""
+    """
+    Estrategia de cálculo basada en una depreciación constante anual.
+    Ideal para mobiliario o equipos mecánicos simples.
+    """
     def calcular(self, fecha_compra: str) -> float:
         anio_compra = int(fecha_compra.split("-")[0])
         anio_actual = datetime.now().year
@@ -12,7 +15,10 @@ class DesgasteLineal(IEstrategiaDesgaste):
         return round(min(t * 0.05, 1.0), 2)
 
 class DesgasteExponencial(IEstrategiaDesgaste):
-    """Implementación AGRESIVA para ver la diferencia en la Demo"""
+    """
+    Estrategia para equipos con obsolescencia tecnológica acelerada.
+    Aplica una curva exponencial de desgaste.
+    """
     def calcular(self, fecha_compra: str) -> float:
         anio_compra = int(fecha_compra.split("-")[0])
         anio_actual = datetime.now().year

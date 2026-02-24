@@ -3,7 +3,6 @@ from src.models.concretos import MotorInduccion, Osciloscopio, Multimetro
 class EquipoFactory:
     """
     Fábrica central para crear cualquier tipo de equipo usando constructores dinámicos.
-    100% Escalable: Cero sentencias if/elif.
     """
 
     # Diccionario que mapea el nombre del equipo con su función constructora
