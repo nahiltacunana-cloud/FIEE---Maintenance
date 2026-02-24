@@ -92,19 +92,24 @@ def generar_pdf(equipo, lab):
             fecha = inc.get('fecha', '-')
             texto = inc.get('detalle', '-')
             dictamen = inc.get('dictamen_ia', '')
+
+            # --- PARCHE DE SEGURIDAD PARA EMOJIS ---
+            # Limpiamos el texto principal del historial
+            texto_seguro = str(texto).encode('latin-1', 'replace').decode('latin-1')
             
             # 1. Forzamos el cursor al margen izquierdo (10 mm)
             builder.pdf.set_x(10) 
-            # 2. Le decimos explícitamente a fpdf2 cómo saltar de línea
-            builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto}", new_x="LMARGIN", new_y="NEXT")
+            # 2. Usamos el texto SEGURO (sin emojis que rompan la fuente)
+            builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto_seguro}", new_x="LMARGIN", new_y="NEXT")
             
             if dictamen:
-                texto_dictamen = f"   >> Dictamen IA: {dictamen}"
-                texto_limpio = texto_dictamen.encode('latin-1', 'replace').decode('latin-1')
+                # Limpiamos también el dictamen de la IA por si acaso
+                dictamen_seguro = str(dictamen).encode('latin-1', 'replace').decode('latin-1')
+                texto_dictamen = f"   >> Dictamen IA: {dictamen_seguro}"
                 
                 builder.pdf.set_font("helvetica", "I", 9)
-                builder.pdf.set_x(10) # Volvemos a forzar el cursor a la izquierda
-                builder.pdf.multi_cell(0, 6, texto_limpio, new_x="LMARGIN", new_y="NEXT")
+                builder.pdf.set_x(10)
+                builder.pdf.multi_cell(0, 6, texto_dictamen, new_x="LMARGIN", new_y="NEXT")
                 builder.pdf.set_font("helvetica", "", 10)
                 
             builder.pdf.ln(2)
@@ -233,26 +238,9 @@ class VistaDashboard(Vista):
                                 eq_sel.estado = EstadoEquipo.FALLA.name      # <-- Forzamos a que sea String
                             elif alerta or any(p in diagnostico_ia for p in ["ANOMAL", "MANTENIMIENTO", "DESGASTE", "RIESGO"]):
                                 eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name # <-- Forzamos a que sea String
-                            hace_una_semana = datetime.now() - timedelta(days=7)
-                            contador = 0
                             
-                            for inc in eq_sel.historial_incidencias:
-                                try:
-                                    if isinstance(inc, dict):
-                                        fecha_str = str(inc.get("fecha", ""))[:10] 
-                                        if len(fecha_str) == 10:
-                                            fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
-                                            if fecha_dt >= hace_una_semana:
-                                                contador += 1
-                                except:
-                                    pass 
-                                    
-                            st.info(f"📊 MODO DEBUG: El sistema cuenta {contador} reportes recientes válidos.")
-                            
-                            if contador >= 3:
+                            if eq_sel.verificar_umbral_quejas():
                                 st.error("🚨 UMBRAL SUPERADO: El sistema ha bloqueado el equipo por precaución.")
-                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
-                                import time
                                 time.sleep(4)
 
                             EquipoRepository().actualizar_equipo(eq_sel)

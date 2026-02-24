@@ -1,10 +1,9 @@
-from datetime import datetime
 import sys
 import os
 
 # Agregamos la ruta raíz para evitar errores de importación
 sys.path.append(os.getcwd())
-
+from datetime import datetime, timedelta
 from src.utils.enums import EstadoEquipo
 
 try:
@@ -88,6 +87,10 @@ class Equipo:
         # Revisamos el historial
         historial = getattr(self, 'historial_incidencias', [])
         for incidencia in historial:
+            detalle = incidencia.get('detalle', '').upper()
+            if "REINGRESO" in detalle or "ALTA" in detalle:
+                contador_quejas = 0
+                continue
             fecha_str = incidencia.get('fecha', '')
             try:
                 # Extraemos solo el YYYY-MM-DD (los primeros 10 caracteres)
@@ -110,7 +113,7 @@ class Equipo:
             # Dejamos un registro automático del sistema
             self.historial_incidencias.append({
                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                "detalle": f"⚠️ ALERTA DEL SISTEMA: El equipo superó el umbral de quejas ({contador_quejas} reportes en 7 días). Bloqueado por precaución."
+                "detalle": f"ALERTA DEL SISTEMA: El equipo superó el umbral de quejas ({contador_quejas} reportes en 7 días). Bloqueado por precaución."
             })
             return True # Avisamos que hubo un cambio automático
             

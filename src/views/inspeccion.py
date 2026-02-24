@@ -124,26 +124,10 @@ class VistaInspeccion(Vista):
                         equipo_encontrado.registrar_incidencia(detalle_log)
                         ultimo_ticket = equipo_encontrado.historial_incidencias[-1]
                         ultimo_ticket['dictamen_ia'] = dictamen_ia
-                        hace_una_semana = datetime.now() - timedelta(days=7)
-                        contador = 0
                         
-                        for inc in equipo_encontrado.historial_incidencias:
-                            try:
-                                if isinstance(inc, dict):
-                                    fecha_str = str(inc.get("fecha", ""))[:10] 
-                                    if len(fecha_str) == 10:
-                                        fecha_dt = datetime.strptime(fecha_str, "%Y-%m-%d")
-                                        if fecha_dt >= hace_una_semana:
-                                            contador += 1
-                            except:
-                                pass # Ignora formatos raros de fechas pasadas
-                        
-                        # Si llega a 3, bloquea el equipo y frena la pantalla 4 segundos
-                        if contador >= 3:
-                            equipo_encontrado.estado = EstadoEquipo.EN_MANTENIMIENTO
+                        if equipo_encontrado.verificar_umbral_quejas():
                             st.error("🚨 LÍMITE ALCANZADO: El equipo ha recibido 3 reportes recientes y pasará a Mantenimiento Automático.")
-                            time.sleep(4) 
-                        # === FIN DEL SUPERVISOR ===
+                            time.sleep(4)
 
                         # --- PERSISTENCIA SUPABASE ---
                         repo = EquipoRepository()
