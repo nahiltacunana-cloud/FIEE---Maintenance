@@ -33,95 +33,100 @@ class EquipoGenerico(Equipo):
 # 1. UTILIDADES
 # ==============================================================================
 
-def obtener_comentario_estado(obs_val, estado_str):
-    est_upper = str(estado_str).upper()
-    if any(palabra in est_upper for palabra in ["MANTENIMIENTO", "FALLA", "REPORTADO", "BAJA"]):
-        return "⚠️ ATENCIÓN: Equipo fuera de servicio."
-    if obs_val < 0.2: return "✅ Óptimas condiciones."
-    elif obs_val < 0.5: return "🟡 Desgaste moderado."
-    elif obs_val < 0.8: return "🟠 Desgaste avanzado."
-    else: return "🔴 CRÍTICO: Riesgo inminente."
+class DashboardUtils:
+    """
+    Clase utilitaria para la vista del Dashboard.
+    Encapsula lógica de formato, transformación de datos a DataFrames 
+    """
 
-def convertir_objetos_a_df(_lista_equipos_dict, _trigger): 
-    data = []
-    if not _lista_equipos_dict or not isinstance(_lista_equipos_dict, dict): 
-        return pd.DataFrame()
+    @staticmethod
+    def obtener_comentario_estado(obs_val, estado_str):
+        est_upper = str(estado_str).upper()
+        if any(palabra in est_upper for palabra in ["MANTENIMIENTO", "FALLA", "REPORTADO", "BAJA"]):
+            return "⚠️ ATENCIÓN: Equipo fuera de servicio."
+        if obs_val < 0.2: return "✅ Óptimas condiciones."
+        elif obs_val < 0.5: return "🟡 Desgaste moderado."
+        elif obs_val < 0.8: return "🟠 Desgaste avanzado."
+        else: return "🔴 CRÍTICO: Riesgo inminente."
 
-    for lab_nombre, lista_equipos in _lista_equipos_dict.items():
-        if not isinstance(lista_equipos, list): continue 
-        for eq in lista_equipos:
-            obs_num = eq.calcular_obsolescencia()
-            estado_actual = eq.estado.name if hasattr(eq.estado, 'name') else str(eq.estado)
-            data.append({
-                "ID": eq.id_activo,
-                "Modelo": eq.modelo,
-                "Tipo": type(eq).__name__, 
-                "Ubicación": lab_nombre,
-                "Estado": estado_actual,
-                "Desgaste (%)": f"{obs_num * 100:.2f}%", 
-                "Diagnóstico": obtener_comentario_estado(obs_num, estado_actual),
-                "OBJ_REF": eq 
-            })
-    return pd.DataFrame(data)
+    @staticmethod
+    def convertir_objetos_a_df(_lista_equipos_dict, _trigger): 
+        data = []
+        if not _lista_equipos_dict or not isinstance(_lista_equipos_dict, dict): 
+            return pd.DataFrame()
 
-# --- Función PDF Profesional (PATRÓN BUILDER) ---
-def generar_pdf(equipo, lab):
-    builder = ReporteBuilder()
-    builder.agregar_titulo("ORDEN DE TRABAJO Y FICHA TÉCNICA")
-    
-    obs = equipo.calcular_obsolescencia()
-    estado_actual = equipo.estado.name if hasattr(equipo.estado, 'name') else str(equipo.estado)
-    
-    datos = {
-        "ID Activo": equipo.id_activo,
-        "Modelo": equipo.modelo,
-        "Ubicación": lab,
-        "Fecha de Compra": str(equipo.fecha_compra),
-        "Estado Actual": estado_actual,
-        "Desgaste Calculado": f"{obs*100:.2f}%"
-    }
-    builder.agregar_cuerpo(datos)
-    
-    # HISTORIAL
-    builder.pdf.ln(5)
-    builder.pdf.set_font("helvetica", "B", 12)
-    builder.pdf.cell(0, 10, "Historial de Mantenimiento e Incidencias:", new_x="LMARGIN", new_y="NEXT")
-    builder.pdf.set_font("helvetica", "", 10)
-    
-    if equipo.historial_incidencias:
-        for inc in equipo.historial_incidencias:
-            fecha = inc.get('fecha', '-')
-            texto = inc.get('detalle', '-')
-            dictamen = inc.get('dictamen_ia', '')
+        for lab_nombre, lista_equipos in _lista_equipos_dict.items():
+            if not isinstance(lista_equipos, list): continue 
+            for eq in lista_equipos:
+                obs_num = eq.calcular_obsolescencia()
+                estado_actual = eq.estado.name if hasattr(eq.estado, 'name') else str(eq.estado)
+                data.append({
+                    "ID": eq.id_activo,
+                    "Modelo": eq.modelo,
+                    "Tipo": type(eq).__name__, 
+                    "Ubicación": lab_nombre,
+                    "Estado": estado_actual,
+                    "Desgaste (%)": f"{obs_num * 100:.2f}%", 
+                    "Diagnóstico": DashboardUtils.obtener_comentario_estado(obs_num, estado_actual), # FÍJATE AQUÍ: Llamamos a la función con el nombre de la clase
+                    "OBJ_REF": eq 
+                })
+        return pd.DataFrame(data)
 
-            # --- PARCHE DE SEGURIDAD PARA EMOJIS ---
-            # Limpiamos el texto principal del historial
-            texto_seguro = str(texto).encode('latin-1', 'replace').decode('latin-1')
-            
-            # 1. Forzamos el cursor al margen izquierdo (10 mm)
-            builder.pdf.set_x(10) 
-            # 2. Usamos el texto SEGURO (sin emojis que rompan la fuente)
-            builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto_seguro}", new_x="LMARGIN", new_y="NEXT")
-            
-            if dictamen:
-                # Limpiamos también el dictamen de la IA por si acaso
-                dictamen_seguro = str(dictamen).encode('latin-1', 'replace').decode('latin-1')
-                texto_dictamen = f"   >> Dictamen IA: {dictamen_seguro}"
+    # --- Función PDF Profesional (PATRÓN BUILDER) ---
+    @staticmethod
+    def generar_pdf(equipo, lab): 
+        builder = ReporteBuilder()
+        builder.agregar_titulo("ORDEN DE TRABAJO Y FICHA TÉCNICA")
+        
+        obs = equipo.calcular_obsolescencia()
+        estado_actual = equipo.estado.name if hasattr(equipo.estado, 'name') else str(equipo.estado)
+        
+        datos = {
+            "ID Activo": equipo.id_activo,
+            "Modelo": equipo.modelo,
+            "Ubicación": lab,
+            "Fecha de Compra": str(equipo.fecha_compra),
+            "Estado Actual": estado_actual,
+            "Desgaste Calculado": f"{obs*100:.2f}%"
+        }
+        builder.agregar_cuerpo(datos)
+        
+        # HISTORIAL
+        builder.pdf.ln(5)
+        builder.pdf.set_font("helvetica", "B", 12)
+        builder.pdf.cell(0, 10, "Historial de Mantenimiento e Incidencias:", new_x="LMARGIN", new_y="NEXT")
+        builder.pdf.set_font("helvetica", "", 10)
+        
+        if equipo.historial_incidencias:
+            for inc in equipo.historial_incidencias:
+                fecha = inc.get('fecha', '-')
+                texto = inc.get('detalle', '-')
+                dictamen = inc.get('dictamen_ia', '')
+
+                # --- PARCHE DE SEGURIDAD PARA EMOJIS ---
+                texto_seguro = str(texto).encode('latin-1', 'replace').decode('latin-1')
                 
-                builder.pdf.set_font("helvetica", "I", 9)
-                builder.pdf.set_x(10)
-                builder.pdf.multi_cell(0, 6, texto_dictamen, new_x="LMARGIN", new_y="NEXT")
-                builder.pdf.set_font("helvetica", "", 10)
+                builder.pdf.set_x(10) 
+                builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto_seguro}", new_x="LMARGIN", new_y="NEXT")
                 
-            builder.pdf.ln(2)
-    else:
-        builder.pdf.set_x(10)
-        builder.pdf.cell(0, 10, "Sin registros de mantenimiento.", new_x="LMARGIN", new_y="NEXT")
+                if dictamen:
+                    dictamen_seguro = str(dictamen).encode('latin-1', 'replace').decode('latin-1')
+                    texto_dictamen = f"   >> Dictamen IA: {dictamen_seguro}"
+                    
+                    builder.pdf.set_font("helvetica", "I", 9)
+                    builder.pdf.set_x(10)
+                    builder.pdf.multi_cell(0, 6, texto_dictamen, new_x="LMARGIN", new_y="NEXT")
+                    builder.pdf.set_font("helvetica", "", 10)
+                    
+                builder.pdf.ln(2)
+        else:
+            builder.pdf.set_x(10)
+            builder.pdf.cell(0, 10, "Sin registros de mantenimiento.", new_x="LMARGIN", new_y="NEXT")
 
-    # Firmas de autorización (Versión Admin)
-    builder.agregar_firmas()
-    
-    return builder.compilar_pdf()
+        # Firmas de autorización (Versión Admin)
+        builder.agregar_firmas()
+        
+        return builder.compilar_pdf()
 
 # ==============================================================================
 # 2. VISTA DASHBOARD
@@ -179,7 +184,7 @@ class VistaDashboard(Vista):
                 opciones = ["🔍 VER TODOS"] + labs_con_datos
                 filtro_lab = st.selectbox("Filtrar por Ubicación:", opciones)
                 
-                df = convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
+                df = DashboardUtils.convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
                 
                 if not df.empty:
                     # 1. Quitamos la columna de objetos y filtramos los vivos
@@ -310,7 +315,7 @@ class VistaDashboard(Vista):
                     st.markdown("---")
                     
                     # --- NUEVO BOTÓN DE DESCARGA (Entregable 7) ---
-                    pdf_bytes = generar_pdf(eq_sel, getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'))
+                    pdf_bytes = DashboardUtils.generar_pdf(eq_sel, getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'))
                     st.download_button(
                         label="📄 Descargar Ficha Técnica y Orden de Trabajo", 
                         data=pdf_bytes, 
@@ -452,7 +457,7 @@ class VistaDashboard(Vista):
                 st.subheader("🪦 Cementerio de Equipos (Histórico de Bajas)")
                 st.markdown("Registro permanente de activos retirados por obsolescencia, daño irreparable o descarte.")
             
-                df = convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
+                df = DashboardUtils.convertir_objetos_a_df(st.session_state.db_laboratorios, st.session_state.trigger)
             
                 if not df.empty:
                     df_caidos = df[df["Estado"] == "BAJA"].drop(columns=["OBJ_REF"])
