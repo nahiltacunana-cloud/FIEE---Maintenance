@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 class SistemaFIEE:
     def iniciar_sesion(self, email, password):
         # Simulación de lógica con Supabase
-        if "@fiee.uni.edu.pe" in email and password == "clave123":
+        if "@uni.pe" in email and password == "clave123":
             return {"status": "success", "rol": "administrador"}
         return {"status": "error", "message": "Credenciales inválidas"}
 
@@ -19,7 +19,7 @@ class TestAppPrincipal(unittest.TestCase):
 
     def test_login_institucional_exitoso(self):
         """Prueba acceso con correo de la UNI"""
-        res = self.app.iniciar_sesion("estudiante@fiee.uni.edu.pe", "clave123")
+        res = self.app.iniciar_sesion("estudiante@uni.pe", "clave123")
         self.assertEqual(res["status"], "success")
         self.assertEqual(res["rol"], "administrador")
 
