@@ -35,11 +35,11 @@ class TestArquitecturaSistema(unittest.TestCase):
         motor = MotorInduccion("MOT-IND-X5", "Siemens 1LE1", "2020-05-20", "15HP", "440V", 3600, self.estrategia_test)
         datos = motor.to_dict()
         
-        # Si 'id_equipo' falla, probamos con las claves comunes de un dict
+        # Si 'id_activo' falla, probamos con las claves comunes de un dict
         # Esto verifica que el objeto se convirtió a diccionario correctamente
         self.assertIsInstance(datos, dict)
-        # Verificamos que al menos tenga el ID (ajusta el nombre si en tu BD es 'id' o 'codigo')
-        self.assertTrue('id' in datos or 'id_equipo' in datos or 'codigo' in datos)
+        # Verificamos que al menos tenga el ID 
+        self.assertTrue('id' in datos or 'id_activo' in datos or 'codigo' in datos)
 
 if __name__ == '__main__':
     unittest.main()
