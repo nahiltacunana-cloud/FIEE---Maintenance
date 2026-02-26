@@ -40,11 +40,11 @@ class TestVisionIA(unittest.TestCase):
     def test_logica_diagnostico_limpio(self):
         """Verifica que el formateador de texto funcione correctamente"""
         # Probamos la función interna que decide si es anomalía o no
-        res_ok = self.servicio._VisionService__procesar_diagnostico("Normal", 95.5)
+        res_ok = self.servicio._VisionService__procesar_diagnostico("multimetro_normal", 95.5)
         self.assertFalse(res_ok["alerta"])
         self.assertEqual(res_ok["diagnostico"], "OK: DENTRO DE PARAMETROS NORMALES")
 
-        res_falla = self.servicio._VisionService__procesar_diagnostico("Motor_Burned", 88.0)
+        res_falla = self.servicio._VisionService__procesar_diagnostico("motorinduccion_quemado", 88.0)
         self.assertTrue(res_falla["alerta"])
         self.assertEqual(res_falla["diagnostico"], "ANOMALÍA DETECTADA")
 
