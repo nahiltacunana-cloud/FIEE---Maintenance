@@ -1,7 +1,8 @@
 import streamlit as st
 import sys
 import os
-#1.
+
+# 1. Ajuste de rutas
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
@@ -30,27 +31,66 @@ class ServicioAutenticacion:
         key = st.secrets["SUPABASE_KEY"]
         self.supabase = create_client(url, key)
 
-    def autenticar(self, usuario, contrasena):
+    def autenticar(self, correo, contrasena):
         try:
-            # Consultamos a la tabla 'usuarios' que acabas de crear
-            respuesta = self.supabase.table("usuarios").select("*").eq("correo", usuario).eq("contrasena", contrasena).execute()
-            
-            # Si la lista de datos trae algo, el usuario y contraseña son correctos
-            if len(respuesta.data) > 0: 
-                datos_usuario = respuesta.data[0]
+            # 1. Intentamos entrar al sistema de seguridad oficial de Supabase
+            res = self.supabase.auth.sign_in_with_password({
+                "email": correo, 
+                "password": contrasena
+            })
+
+            # ---> GUARDAMOS LA SESIÓN PARA QUE STREAMLIT NO LA OLVIDE <---
+            if res.session:
+                st.session_state['access_token'] = res.session.access_token
+                st.session_state['refresh_token'] = res.session.refresh_token
+
+            # 2. Si tiene éxito, buscamos sus datos en la tabla (USANDO CORREO)
+            if res.user:
+                perfil = self.supabase.table("usuarios").select("rol", "es_primera_vez").eq("correo", correo).single().execute()
+                
                 st.session_state["autenticado"] = True
-                st.session_state["usuario_actual"] = datos_usuario["correo"]
-                st.session_state["rol_actual"] = datos_usuario["rol"] # Guardamos si es estudiante o docente
+                st.session_state["usuario_actual"] = res.user.email 
+                st.session_state["rol_actual"] = perfil.data.get("rol", "estudiante")
+                st.session_state["primera_vez"] = perfil.data.get("es_primera_vez", False)
                 return True
-            return False
+                
         except Exception as e:
-            st.error(f"Error de conexión con la base de datos: {e}")
+            st.error(f"Detalle del error técnico: {e}")
+            return False
+
+    def actualizar_contrasena(self, nueva_clave):
+        """Actualiza la clave en Supabase Auth y quita la bandera en la tabla."""
+        try:
+            # ---> RESTAURAMOS LA SESIÓN ANTES DE CAMBIAR LA CLAVE <---
+            if 'access_token' in st.session_state and 'refresh_token' in st.session_state:
+                self.supabase.auth.set_session(
+                    st.session_state['access_token'], 
+                    st.session_state['refresh_token']
+                )
+
+            # 1. Cambiamos la clave real en la bóveda de Supabase
+            self.supabase.auth.update_user({"password": nueva_clave})
+            
+            # 2. Actualizamos la bandera en nuestra tabla de usuarios (USANDO CORREO)
+            usuario_auth = self.supabase.auth.get_user()
+            if usuario_auth and usuario_auth.user:
+                correo_usuario = usuario_auth.user.email
+                self.supabase.table("usuarios").update({"es_primera_vez": False}).eq("correo", correo_usuario).execute()
+                
+                # 3. Actualizamos la memoria de la app
+                st.session_state["primera_vez"] = False
+                return True
+                
+        except Exception as e:
+            st.error(f"Error al actualizar la contraseña: {e}")
             return False
 
     def cerrar_sesion(self):
+        self.supabase.auth.sign_out() # Cerramos sesión en el servidor también
         st.session_state["autenticado"] = False
         st.session_state["usuario_actual"] = None
         st.session_state["rol_actual"] = None
+        st.session_state["primera_vez"] = False
 
     def esta_autenticado(self):
         return st.session_state.get("autenticado", False)
@@ -60,34 +100,65 @@ class VistaLogin:
         self.servicio_auth = servicio_auth
 
     def render(self):
-        c1, c2, c3 = st.columns([1, 1, 1])
+        c1, c2, c3 = st.columns([1, 2, 1])
         with c2:
             st.title("🔒 Acceso Restringido")
-            st.markdown("Ingrese su credencial")
             
-            with st.form("form_login"):
-                usuario = st.text_input("👤 Usuario")
-                contrasena = st.text_input("🔑 Contraseña", type="password")
-                btn_entrar = st.form_submit_button("Ingresar", use_container_width=True)
-                
-                if btn_entrar:
-                    if self.servicio_auth.autenticar(usuario, contrasena):
-                        st.rerun()
+            # ¡TU IDEA APLICADA! Dos opciones claras usando pestañas
+            tab_login, tab_ayuda = st.tabs(["🔑 Iniciar Sesión", "❓ Soy nuevo / Problemas"])
+            
+            with tab_login:
+                with st.form("form_login"):
+                    usuario = st.text_input("👤 Correo (@uni.pe)")
+                    contrasena = st.text_input("🔑 Contraseña", type="password")
+                    btn_entrar = st.form_submit_button("Ingresar", use_container_width=True)
+                    
+                    if btn_entrar:
+                        if self.servicio_auth.autenticar(usuario, contrasena):
+                            st.rerun()
+            
+            with tab_ayuda:
+                st.markdown("### ¿Problemas de acceso?")
+                st.markdown("""
+                * **Si eres nuevo:** El Administrador debe crearte una cuenta primero con una clave temporal.
+                * **Si olvidaste tu clave:** Por el momento, solicita al Administrador (Docente) el restablecimiento de tu clave temporal.
+                """)
+                st.markdown("---")
+
+class VistaActualizarClave:
+    """Nueva vista de seguridad que fuerza el cambio de contraseña."""
+    def __init__(self, servicio_auth: ServicioAutenticacion):
+        self.servicio_auth = servicio_auth
+
+    def render(self):
+        st.warning("⚠️ Por políticas de seguridad, debes cambiar tu contraseña temporal antes de acceder al sistema.")
+        c1, c2, c3 = st.columns([1, 2, 1])
+        with c2:
+            st.subheader("🔑 Establecer Credencial Definitiva")
+            with st.form("form_cambio_clave"):
+                nueva = st.text_input("Nueva Contraseña", type="password")
+                confirma = st.text_input("Confirma Contraseña", type="password")
+                btn_actualizar = st.form_submit_button("Actualizar y Entrar", use_container_width=True)
+
+                if btn_actualizar:
+                    if nueva != confirma:
+                        st.error("Las contraseñas no coinciden.")
+                    elif len(nueva) < 6:
+                        st.error("La contraseña debe tener al menos 6 caracteres.")
                     else:
-                        st.error("Credenciales incorrectas. Intente de nuevo.")
+                        if self.servicio_auth.actualizar_contrasena(nueva):
+                            st.success("¡Contraseña actualizada con éxito!")
+                            st.rerun()
 
 # ==============================================================================
-# 2. CONTROLADOR PRINCIPAL DE LA APLICACIÓN (NUEVO)
+# 2. CONTROLADOR PRINCIPAL DE LA APLICACIÓN
 # ==============================================================================
 class AplicacionFIEE:
-    """Clase principal que orquesta la inicialización y el enrutamiento de vistas."""
-    
     def __init__(self):
         self.servicio_auth = ServicioAutenticacion()
-        self._inicializar_estado() # Se llama automáticamente al instanciar
+        self._inicializar_estado()
 
     def _inicializar_estado(self):
-        """Encapsula la lógica de conexión a base de datos y variables globales."""
         if 'db_laboratorios' not in st.session_state:
             st.session_state.est_lineal = DesgasteLineal()
             st.session_state.est_expo = DesgasteExponencial()
@@ -103,31 +174,29 @@ class AplicacionFIEE:
                 st.session_state.db_laboratorios = {}
 
     def ejecutar(self):
-        """Dibuja la interfaz principal y aplica el polimorfismo de las vistas."""
         with st.sidebar:
             st.title("🏭 Sistema FIEE")
             st.info("Sistema de Gestión de Activos v1.0")
 
         vista_actual = None
 
-        # 1. EL CANDADO PRINCIPAL
+        # 1. CANDADO PRINCIPAL: Si no está logueado
         if not self.servicio_auth.esta_autenticado():
             vista_actual = VistaLogin(self.servicio_auth)
         
-        # 2. SI YA INICIÓ SESIÓN: Mostramos menú según su ROL
+        # 2. CANDADO SECUNDARIO: Si es su primera vez, forzar cambio de clave
+        elif st.session_state.get("primera_vez", False):
+            vista_actual = VistaActualizarClave(self.servicio_auth)
+
+        # 3. ACCESO CONCEDIDO: Mostrar menú según su ROL
         else:
             with st.sidebar:
-                # Obtenemos el rol que guardamos desde Supabase
                 rol_usuario = st.session_state.get('rol_actual', 'estudiante')
-                
                 st.success(f"👤 Usuario: **{st.session_state.get('usuario_actual')}**\n\n🛡️ Rol: **{rol_usuario.capitalize()}**")
                 
-                # LA MAGIA DE LOS ROLES: Definimos qué puede ver cada quien
                 if rol_usuario == "docente":
-                    # El profe puede ver ambas cosas
                     opciones_menu = ["Dashboard (Docentes/Admin)", "Inspección (Estudiantes/Técnicos)"]
                 else: 
-                    # El estudiante o trabajador SOLO ve inspección
                     opciones_menu = ["Inspección (Estudiantes/Técnicos)"]
                 
                 opcion = st.radio("Navegación:", opciones_menu)
@@ -136,13 +205,12 @@ class AplicacionFIEE:
                     self.servicio_auth.cerrar_sesion()
                     st.rerun()
 
-            # 3. Dirigimos a la vista según la opción seleccionada
             if opcion == "Inspección (Estudiantes/Técnicos)":
                 vista_actual = VistaInspeccion()
             elif opcion == "Dashboard (Docentes/Admin)":
                 vista_actual = VistaDashboard()
 
-        # Polimorfismo puro
+        # Polimorfismo puro (Renderiza Login, Cambio de Clave, Inspección o Dashboard)
         if vista_actual:
             vista_actual.render()
 
@@ -151,4 +219,4 @@ class AplicacionFIEE:
 # ==============================================================================
 if __name__ == "__main__":
     app = AplicacionFIEE()
-    app.ejecutar()                                                                                              
+    app.ejecutar()
