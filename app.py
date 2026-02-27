@@ -39,12 +39,12 @@ class ServicioAutenticacion:
                 "password": contrasena
             })
 
-            # ---> GUARDAMOS LA SESIÓN PARA QUE STREAMLIT NO LA OLVIDE <---
+            # GUARDAMOS LA SESIÓN PARA QUE STREAMLIT NO LA OLVIDE
             if res.session:
                 st.session_state['access_token'] = res.session.access_token
                 st.session_state['refresh_token'] = res.session.refresh_token
 
-            # 2. Si tiene éxito, buscamos sus datos en la tabla (USANDO CORREO)
+            # 2. Si tiene éxito, buscamos sus datos en la tabla
             if res.user:
                 perfil = self.supabase.table("usuarios").select("rol", "es_primera_vez").eq("correo", correo).single().execute()
                 
@@ -61,7 +61,7 @@ class ServicioAutenticacion:
     def actualizar_contrasena(self, nueva_clave):
         """Actualiza la clave en Supabase Auth y quita la bandera en la tabla."""
         try:
-            # ---> RESTAURAMOS LA SESIÓN ANTES DE CAMBIAR LA CLAVE <---
+            # RESTAURAMOS LA SESIÓN ANTES DE CAMBIAR LA CLAVE
             if 'access_token' in st.session_state and 'refresh_token' in st.session_state:
                 self.supabase.auth.set_session(
                     st.session_state['access_token'], 
@@ -86,7 +86,7 @@ class ServicioAutenticacion:
             return False
 
     def cerrar_sesion(self):
-        self.supabase.auth.sign_out() # Cerramos sesión en el servidor también
+        self.supabase.auth.sign_out() # Cerramos sesión en el servidor
         st.session_state["autenticado"] = False
         st.session_state["usuario_actual"] = None
         st.session_state["rol_actual"] = None
@@ -104,7 +104,6 @@ class VistaLogin:
         with c2:
             st.title("🔒 Acceso Restringido")
             
-            # ¡TU IDEA APLICADA! Dos opciones claras usando pestañas
             tab_login, tab_ayuda = st.tabs(["🔑 Iniciar Sesión", "❓ Soy nuevo / Problemas"])
             
             with tab_login:
@@ -180,11 +179,11 @@ class AplicacionFIEE:
 
         vista_actual = None
 
-        # 1. CANDADO PRINCIPAL: Si no está logueado
+        # 1. CANDADO PRINCIPAL
         if not self.servicio_auth.esta_autenticado():
             vista_actual = VistaLogin(self.servicio_auth)
         
-        # 2. CANDADO SECUNDARIO: Si es su primera vez, forzar cambio de clave
+        # 2. CANDADO SECUNDARIO: Forzar cambio de clave por primera vez
         elif st.session_state.get("primera_vez", False):
             vista_actual = VistaActualizarClave(self.servicio_auth)
 
