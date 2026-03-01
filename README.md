@@ -19,7 +19,7 @@ Integración con un modelo de **Deep Learning** basado en la arquitectura *Visio
 * **Función:** Diagnóstico visual automatizado para identificar de forma objetiva los estados de desgaste y fallas en osciloscopios, multímetros y motores.
 * **Valor Técnico:** Al haber sido entrenado con imágenes reales de los laboratorios de la FIEE, el modelo elimina el sesgo humano en las inspecciones, permitiendo que la IA evalúe el estado físico real del activo antes de calcular su obsolescencia.
 
-### 2. Mantenimiento Predictivo & Big Data
+### 2. Mantenimiento Predictivo
 Implementación de algoritmos matemáticos para el cálculo del **Tiempo Útil Restante (RUL)**.
 * **Modelos:** Aplicación de degradación lineal y exponencial para proyectar fallos antes de que ocurran.
 * **Visualización:** Dashboards interactivos en Streamlit para la toma de decisiones basada en datos.
