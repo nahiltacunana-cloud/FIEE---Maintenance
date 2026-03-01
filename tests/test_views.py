@@ -34,7 +34,9 @@ class TestViewsLogic(unittest.TestCase):
         
         self.assertEqual(DashboardUtils.obtener_comentario_estado(0.75, "OPERATIVO"), "🟠 Desgaste avanzado.")
         
-        self.assertEqual(DashboardUtils.obtener_comentario_estado(0.05, "FALLA"), "⚠️ ATENCIÓN: Equipo fuera de servicio.")
+        self.assertEqual(DashboardUtils.obtener_comentario_estado(0.05, "FALLA"), "🛑 ESTADO: INACTIVO - En revisión técnica")
+    
+        self.assertEqual(DashboardUtils.obtener_comentario_estado(0.1, "REPORTADO"), "⚠️ ATENCIÓN: Reporte pendiente de validación")
 
     def test_convertir_objetos_a_df(self):
         """Verifica la transformación a DataFrame usando el método estático"""
