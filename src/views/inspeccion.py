@@ -1,11 +1,12 @@
 import streamlit as st
 import time
 import os
+import uuid
 from datetime import datetime, timedelta
 from src.views.base_view import Vista
 from src.utils.enums import EstadoEquipo
-from src.repositories.equipo_repository import EquipoRepository # <--- NUEVO
-from src.utils.reporte_builder import ReporteBuilder # <--- NUEVO: Entregable 7
+from src.repositories.equipo_repository import EquipoRepository
+from src.utils.reporte_builder import ReporteBuilder 
 
 try:
     from src.services.vision_service import VisionService
@@ -108,6 +109,8 @@ class VistaInspeccion(Vista):
                                             equipo_encontrado.estado = EstadoEquipo.FALLA
                                         elif "ANOMAL" in diagnostico_ia:
                                             equipo_encontrado.estado = EstadoEquipo.EN_MANTENIMIENTO
+                                        else:
+                                            equipo_encontrado.estado = "REPORTADO"
                                         EquipoRepository().actualizar_equipo(equipo_encontrado)
                                         st.session_state.trigger = 1
                                             
@@ -119,38 +122,56 @@ class VistaInspeccion(Vista):
                                 finally:
                                     if os.path.exists(temp_filename): os.remove(temp_filename)
 
-                        # --- GUARDADO EN HISTORIAL (Siempre se guarda) ---
+                        url_evidencia = ""
+                        if foto_final:
+                            try:
+                                from supabase import create_client
+                                # Asegúrate de que los nombres de tus secrets coincidan con los de tu archivo
+                                supabase_cliente = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
+                                    
+                                nombre_archivo = f"{equipo_encontrado.id_activo}_{uuid.uuid4().hex[:6]}.jpg"
+                                bytes_foto = foto_final.getvalue()
+                                    
+                                supabase_cliente.storage.from_("evidencias").upload(
+                                    file=bytes_foto,
+                                    path=nombre_archivo,
+                                    file_options={"content-type": "image/jpeg"}
+                                    )
+                                    
+                                url_evidencia = supabase_cliente.storage.from_("evidencias").get_public_url(nombre_archivo)
+                            except Exception as e:
+                                st.warning(f"⚠️ La foto se analizó pero no se pudo subir a la nube: {e}")
                         detalle_log = f"Reportado por {usuario}: {descripcion}"
                         equipo_encontrado.registrar_incidencia(detalle_log)
+                            
                         ultimo_ticket = equipo_encontrado.historial_incidencias[-1]
                         ultimo_ticket['dictamen_ia'] = dictamen_ia
-                        
-                        if equipo_encontrado.verificar_umbral_quejas():
-                            st.error("🚨 LÍMITE ALCANZADO: El equipo ha recibido 3 reportes recientes y pasará a Mantenimiento Automático.")
-                            time.sleep(4)
+                            
+                        if url_evidencia:
+                            ultimo_ticket['url_foto'] = url_evidencia
 
-                        # --- PERSISTENCIA SUPABASE ---
-                        repo = EquipoRepository()
-                        repo.actualizar_equipo(equipo_encontrado)
                         # --- PERSISTENCIA SUPABASE ---
                         repo = EquipoRepository()
                         repo.actualizar_equipo(equipo_encontrado)
 
                         st.success("✅ Reporte registrado y guardado en la Nube.")
-
-                        # --- ENTREGABLE 7: GENERACIÓN DEL PDF TIPO TICKET ---
+                        st.markdown("### 🤖 Evidencia de la Inspección con IA")
+                        if foto_final:
+                             st.image(foto_final, caption="Imagen analizada por la IA", width=300)
+                        st.info(f"**Dictamen:** {dictamen_ia}")
+                        # --- GENERACIÓN DEL PDF TIPO TICKET ---
                         try:
                             # 1. Construimos el PDF en RAM
                             builder = ReporteBuilder()
                             builder.agregar_titulo("TICKET DE REPORTE - ESTUDIANTE")
-                            texto_ia_pdf = dictamen_ia[:55] + "..." if len(dictamen_ia) > 55 else dictamen_ia
+                            dictamen_corto = (dictamen_ia[:57] + '...') if len(dictamen_ia) > 60 else dictamen_ia
                             datos_ticket = {
                                 "ID Activo": equipo_encontrado.id_activo,
                                 "Equipo": equipo_encontrado.modelo,
                                 "Ubicación": lab_ubicacion,
                                 "Reportado por": usuario,
                                 "Descripción": descripcion,
-                                "Diagnóstico IA": texto_ia_pdf
+                                "Diagnóstico IA": dictamen_corto
                             }
                             builder.agregar_cuerpo(datos_ticket)
                             

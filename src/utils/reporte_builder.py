@@ -1,4 +1,7 @@
 import io
+import os
+import tempfile
+from PIL import Image
 from fpdf import FPDF
 
 class PlantillaFIEE(FPDF):
@@ -58,10 +61,18 @@ class ReporteBuilder:
         if imagen_bytes:
             self.pdf.set_font("helvetica", "B", 12)
             self.pdf.cell(0, 10, "2. Evidencia de la Inspección con IA:", new_x="LMARGIN", new_y="NEXT")
+            
             try:
-                # Se posiciona la imagen centrada
-                imagen_io = io.BytesIO(imagen_bytes.getvalue())
-                self.pdf.image(imagen_io, w=90, x=60) 
+                bytes_reales = imagen_bytes.getvalue() if hasattr(imagen_bytes, 'getvalue') else imagen_bytes
+                
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                    tmp.write(bytes_reales)
+                    ruta_tmp = tmp.name
+                
+                self.pdf.image(ruta_tmp, w=90, x=60) 
+                
+                os.remove(ruta_tmp)
+                
             except Exception as e:
                 self.pdf.set_font("helvetica", "I", 10)
                 self.pdf.cell(0, 10, f"(No se pudo renderizar la imagen: {str(e)})", new_x="LMARGIN", new_y="NEXT")

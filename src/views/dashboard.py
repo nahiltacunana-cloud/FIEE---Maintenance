@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 import random
 import time
+import requests
+import os
+import tempfile
 from datetime import datetime, timedelta
 # --- IMPORTS PROPIOS ---
 from src.views.base_view import Vista 
@@ -42,12 +45,21 @@ class DashboardUtils:
     @staticmethod
     def obtener_comentario_estado(obs_val, estado_str):
         est_upper = str(estado_str).upper()
-        if any(palabra in est_upper for palabra in ["MANTENIMIENTO", "FALLA", "REPORTADO", "BAJA"]):
-            return "⚠️ ATENCIÓN: Equipo fuera de servicio."
-        if obs_val < 0.2: return "✅ Óptimas condiciones."
-        elif obs_val < 0.5: return "🟡 Desgaste moderado."
-        elif obs_val < 0.8: return "🟠 Desgaste avanzado."
-        else: return "🔴 CRÍTICO: Riesgo inminente."
+        if est_upper in ["EN_MANTENIMIENTO", "FALLA"]:
+            return "🛑 ESTADO: INACTIVO - En revisión técnica"
+        elif "REPORTADO" in est_upper:
+            return "⚠️ ATENCIÓN: Reporte pendiente de validación"
+        elif "BAJA" in est_upper:
+            return "✖️ EQUIPO RETIRADO: No disponible"
+        #Caso OPERATIVO
+        if obs_val < 0.2: 
+            return "✅ Óptimas condiciones."
+        elif obs_val < 0.5: 
+            return "🟡 Desgaste moderado."
+        elif obs_val < 0.8: 
+            return "🟠 Desgaste avanzado."
+        else: 
+            return "🔴 CRÍTICO: Riesgo inminente de falla."
 
     @staticmethod
     def convertir_objetos_a_df(_lista_equipos_dict, _trigger): 
@@ -74,10 +86,10 @@ class DashboardUtils:
 
     # --- Función PDF Profesional (PATRÓN BUILDER) ---
     @staticmethod
-    def generar_pdf(equipo, lab): 
+    def generar_pdf(equipo, lab, imagen_bytes=None): 
         builder = ReporteBuilder()
         builder.agregar_titulo("ORDEN DE TRABAJO Y FICHA TÉCNICA")
-        
+       
         obs = equipo.calcular_obsolescencia()
         estado_actual = equipo.estado.name if hasattr(equipo.estado, 'name') else str(equipo.estado)
         
@@ -91,7 +103,11 @@ class DashboardUtils:
         }
         builder.agregar_cuerpo(datos)
         
-        # HISTORIAL
+        # 1. FOTO PRINCIPAL (Solo si se está haciendo un reporte EN VIVO en este momento)
+        if imagen_bytes is not None:
+            builder.agregar_evidencia(imagen_bytes) 
+
+        # 2. SECCIÓN DE HISTORIAL
         builder.pdf.ln(5)
         builder.pdf.set_font("helvetica", "B", 12)
         builder.pdf.cell(0, 10, "Historial de Mantenimiento e Incidencias:", new_x="LMARGIN", new_y="NEXT")
@@ -103,30 +119,57 @@ class DashboardUtils:
                 texto = inc.get('detalle', '-')
                 dictamen = inc.get('dictamen_ia', '')
 
-                # --- PARCHE DE SEGURIDAD PARA EMOJIS ---
+                # --- TEXTO DE LA INCIDENCIA ---
                 texto_seguro = str(texto).encode('latin-1', 'replace').decode('latin-1')
-                
                 builder.pdf.set_x(10) 
                 builder.pdf.multi_cell(0, 6, f"[{fecha}] {texto_seguro}", new_x="LMARGIN", new_y="NEXT")
                 
+                # --- DICTAMEN IA ---
                 if dictamen:
                     dictamen_seguro = str(dictamen).encode('latin-1', 'replace').decode('latin-1')
-                    texto_dictamen = f"   >> Dictamen IA: {dictamen_seguro}"
-                    
                     builder.pdf.set_font("helvetica", "I", 9)
                     builder.pdf.set_x(10)
-                    builder.pdf.multi_cell(0, 6, texto_dictamen, new_x="LMARGIN", new_y="NEXT")
+                    builder.pdf.multi_cell(0, 6, f"   >> Dictamen IA: {dictamen_seguro}", new_x="LMARGIN", new_y="NEXT")
                     builder.pdf.set_font("helvetica", "", 10)
-                    
-                builder.pdf.ln(2)
+                
+                # --- EVIDENCIA VISUAL EN EL HISTORIAL ---
+                if 'url_foto' in inc and inc['url_foto']:
+                    url = inc['url_foto']
+                    try:
+                        # Descargamos la foto de Supabase rápidamente
+                        respuesta = requests.get(url, timeout=5)
+                        if respuesta.status_code == 200:
+                            # La guardamos en un archivo temporal seguro
+                            with tempfile.NamedTemporaryFile(delete=False, suffix=".png") as tmp:
+                                tmp.write(respuesta.content)
+                                tmp_path = tmp.name
+                            
+                            # La dibujamos en el PDF (con un ancho de 80 y un poco indentada)
+                            builder.pdf.ln(2)
+                            builder.pdf.image(tmp_path, x=20, w=80) 
+                            
+                            # Borramos el archivo temporal para no llenar el disco duro
+                            os.remove(tmp_path)
+                    except Exception as e:
+                        builder.pdf.set_text_color(255, 0, 0) # Rojo
+                        builder.pdf.set_x(20)
+                        builder.pdf.multi_cell(0, 6, "[Error al cargar evidencia visual]", new_x="LMARGIN", new_y="NEXT")
+                        builder.pdf.set_text_color(0, 0, 0) # Volver a negro
+                        
+                builder.pdf.ln(4) # Espacio antes de la siguiente incidencia
+                builder.pdf.line(10, builder.pdf.get_y(), 200, builder.pdf.get_y()) # Línea separadora
+                builder.pdf.ln(4)
         else:
             builder.pdf.set_x(10)
             builder.pdf.cell(0, 10, "Sin registros de mantenimiento.", new_x="LMARGIN", new_y="NEXT")
 
         # Firmas de autorización (Versión Admin)
-        builder.agregar_firmas()
-        
-        return builder.compilar_pdf()
+        if builder.pdf.get_y() > 240: 
+            builder.pdf.add_page()
+            builder.agregar_firmas()
+        else:
+            builder.agregar_firmas()
+        return bytes(builder.pdf.output())
 
 # ==============================================================================
 # 2. VISTA DASHBOARD
@@ -189,7 +232,7 @@ class VistaDashboard(Vista):
                 if not df.empty:
                     # 1. Quitamos la columna de objetos y filtramos los vivos
                     df_show = df.drop(columns=["OBJ_REF"])
-                    df_show = df_show[df_show["Estado"] != "BAJA"] # <-- ¡EL FILTRO SALVADOR!
+                    df_show = df_show[df_show["Estado"] != "BAJA"]
                     
                     if filtro_lab != "🔍 VER TODOS":
                         df_show = df_show[df_show["Ubicación"] == filtro_lab]
@@ -237,18 +280,19 @@ class VistaDashboard(Vista):
                                 "dictamen_ia": diag
                             })
                             
-                            # 3. Lógica de estados súper robusta
-                            diagnostico_ia = str(diag).upper()
+                            # 3. Lógica de decisión Inteligente (Human-in-the-Loop)
+                            if alerta:
+                                # CAMINO 1: IA detecta falla evidente en la foto
+                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
+                                inc_detalle = "IA confirmó anomalía visual. Automático a mantenimiento."
+                            else:
+                                # CAMINO 3: IA no detecta falla, pero hay reporte. Pasa a duda/Triaje
+                                eq_sel.estado = "REPORTADO"
+                                inc_detalle = "Inspección IA no concluyente. Requiere Triaje manual."
+                                
+                            # Actualizamos el último registro del historial con la conclusión
+                            eq_sel.historial_incidencias[-1]["detalle"] = inc_detalle
                             
-                            if es_critico or any(p in diagnostico_ia for p in ["FALLA", "CRÍTIC", "QUEMADURA"]): 
-                                eq_sel.estado = EstadoEquipo.FALLA.name      # <-- Forzamos a que sea String
-                            elif alerta or any(p in diagnostico_ia for p in ["ANOMAL", "MANTENIMIENTO", "DESGASTE", "RIESGO"]):
-                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name # <-- Forzamos a que sea String
-                            
-                            if eq_sel.verificar_umbral_quejas():
-                                st.error("🚨 UMBRAL SUPERADO: El sistema ha bloqueado el equipo por precaución.")
-                                time.sleep(4)
-
                             EquipoRepository().actualizar_equipo(eq_sel)
                             
                             # 5. Limpieza TOTAL de la memoria
@@ -279,13 +323,14 @@ class VistaDashboard(Vista):
                         st.success(f"Cambiado a modelo {modo_sel}")
                         time.sleep(1)
                         st.rerun()
-                    st.markdown("#### 👨‍🔧 Acción Manual")
+                    st.markdown("#### 👨‍🔧 Acción Manual y Triaje")
+                    # 1. Si está operativo, el profesor puede levantar un reporte directo (Pasa a REPORTADO)
                     if estado_actual_str == "OPERATIVO":
-                        if st.button("🔧 Enviar a Mantenimiento (Manual)", key=f"mant_man_{eq_sel.id_activo}"):
-                            eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
+                        if st.button("🚩 Levantar Reporte (Enviar a Triaje)", key=f"mant_man_{eq_sel.id_activo}"):
+                            eq_sel.estado = "REPORTADO"
                             eq_sel.historial_incidencias.append({
                                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                                "detalle": "REPORTE MANUAL: Enviado a mantenimiento por quejas de usuarios."
+                                "detalle": "REPORTE MANUAL: Equipo reportado por docente. Pendiente de Triaje."
                             })
                             EquipoRepository().actualizar_equipo(eq_sel)
                             st.cache_data.clear()
@@ -293,6 +338,40 @@ class VistaDashboard(Vista):
                                 del st.session_state['db_laboratorios']
                             st.session_state.trigger = 1
                             st.rerun()
+
+                    # 2. ZONA DE TRIAJE: Si el equipo está reportado, el admin decide
+                    elif estado_actual_str == "REPORTADO":
+                        st.warning("⚠️ Este equipo está en TRIAJE. Requiere revisión.")
+                        
+                        col_t1, col_t2 = st.columns(2)
+                        
+                        with col_t1:
+                            if st.button("✅ Falsa Alarma", key=f"btn_ok_{eq_sel.id_activo}", type="secondary", use_container_width=True):
+                                eq_sel.estado = EstadoEquipo.OPERATIVO.name
+                                eq_sel.historial_incidencias.append({
+                                    "fecha": datetime.now().strftime("%Y-%m-%d"),
+                                    "detalle": "TRIAJE: Reporte desestimado. Vuelve a Operativo."
+                                })
+                                EquipoRepository().actualizar_equipo(eq_sel)
+                                st.cache_data.clear()
+                                if 'db_laboratorios' in st.session_state:
+                                    del st.session_state['db_laboratorios']
+                                st.session_state.trigger = 1
+                                st.rerun()
+                                
+                        with col_t2:
+                            if st.button("🔧 Confirmar Mantenimiento", key=f"btn_bad_{eq_sel.id_activo}", type="primary", use_container_width=True):
+                                eq_sel.estado = EstadoEquipo.EN_MANTENIMIENTO.name
+                                eq_sel.historial_incidencias.append({
+                                    "fecha": datetime.now().strftime("%Y-%m-%d"),
+                                    "detalle": "TRIAJE: Falla confirmada. Pasa a Mantenimiento."
+                                })
+                                EquipoRepository().actualizar_equipo(eq_sel)
+                                st.cache_data.clear()
+                                if 'db_laboratorios' in st.session_state:
+                                    del st.session_state['db_laboratorios']
+                                st.session_state.trigger = 1
+                                st.rerun()
 
                 with c2:
                     obs = eq_sel.calcular_obsolescencia()
@@ -314,21 +393,34 @@ class VistaDashboard(Vista):
                     
                     st.markdown("---")
                     
-                    # --- NUEVO BOTÓN DE DESCARGA (Entregable 7) ---
-                    pdf_bytes = DashboardUtils.generar_pdf(eq_sel, getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'))
-                    st.download_button(
-                        label="📄 Descargar Ficha Técnica y Orden de Trabajo", 
-                        data=pdf_bytes, 
-                        file_name=f"Ficha_{eq_sel.id_activo}.pdf", 
-                        mime="application/pdf",
-                        key=f"dl_pdf_{eq_sel.id_activo}",
-                        type="primary"
-                    )
+                    # --- NUEVO BOTÓN DE DESCARGA ---
+                    imagen_bytes_puros = img.getvalue() if img is not None else None
 
+                    pdf_bytes = DashboardUtils.generar_pdf(
+                        equipo=eq_sel, 
+                        lab=getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'), 
+                        imagen_bytes=imagen_bytes_puros
+                    )
+                    
+                    if pdf_bytes is not None:
+                        st.download_button(
+                            label="📄 Descargar Ficha Técnica y Orden de Trabajo",
+                            data=pdf_bytes,
+                            file_name=f"Ficha_{eq_sel.id_activo}.pdf",
+                            mime="application/pdf"
+                        )
+                    else:
+                        st.error("⚠️ El PDF no se pudo generar (probablemente las imágenes son muy grandes para la página).")
                     with st.expander("Historial de Eventos", expanded=True):
                         for inc in eq_sel.historial_incidencias:
                             st.caption(f"{inc.get('fecha')} | {inc.get('detalle')}")
-                            if 'dictamen_ia' in inc: st.code(inc['dictamen_ia'])
+                            
+                            if 'dictamen_ia' in inc: 
+                                st.code(inc['dictamen_ia'])
+                            
+                            if 'url_foto' in inc and inc['url_foto']:
+                                st.image(inc['url_foto'], width=250, caption="Evidencia del Reporte")
+                                
                             st.divider()
             else:
                 st.info("No hay equipos para gestionar.")
@@ -342,7 +434,7 @@ class VistaDashboard(Vista):
                     for e in lista:
                         # Protección: leemos el estado independientemente de si es Enum o String
                         estado_str = e.estado.name if hasattr(e.estado, 'name') else str(e.estado)
-                        if estado_str not in ["OPERATIVO", "BAJA"]:
+                        if estado_str == "EN_MANTENIMIENTO":
                             observados.append((lab_n, e))
             
             if not observados:

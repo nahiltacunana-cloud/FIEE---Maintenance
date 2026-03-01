@@ -28,13 +28,12 @@ class VisionService:
         print(f"🔍 Repositorio objetivo: {self.__model_path}")
         
         try:
-            # from_pretrained ahora buscará en internet en lugar de tu disco duro
             self.processor = AutoImageProcessor.from_pretrained(self.__model_path)
             self.model = AutoModelForImageClassification.from_pretrained(self.__model_path)
             self.modelo_cargado = True
-            print("✅ Modelo cargado exitosamente desde la nube.")
+            print("Modelo cargado exitosamente desde la nube.")
         except Exception as e:
-            print(f"❌ Error al conectar con Hugging Face: {e}")
+            print(f"Error al conectar con Hugging Face: {e}")
 
     def analizar_estado(self, datos_imagen):
         """Realiza la inferencia sobre una imagen."""
