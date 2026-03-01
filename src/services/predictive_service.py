@@ -11,8 +11,6 @@ class PredictiveService:
     def generar_prediccion(self, equipo):
         """
         Calcula la proyección de vida útil y genera una visualización de tendencia.
-        :param equipo: Instancia del modelo Equipo.
-        :return: (str fecha_estimada, matplotlib.figure.Figure grafico)
         """
         # 1. Preparación de cronología
         try:

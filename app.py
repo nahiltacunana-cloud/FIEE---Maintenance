@@ -193,7 +193,7 @@ class AplicacionFIEE:
                 rol_usuario = st.session_state.get('rol_actual', 'estudiante')
                 st.success(f"👤 Usuario: **{st.session_state.get('usuario_actual')}**\n\n🛡️ Rol: **{rol_usuario.capitalize()}**")
                 
-                if rol_usuario == "docente":
+                if rol_usuario in ["docente", "trabajador"]:
                     opciones_menu = ["Dashboard (Docentes/Admin)", "Inspección (Estudiantes/Técnicos)"]
                 else: 
                     opciones_menu = ["Inspección (Estudiantes/Técnicos)"]

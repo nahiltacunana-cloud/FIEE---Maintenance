@@ -15,12 +15,8 @@ from src.repositories.equipo_repository import EquipoRepository
 from src.utils.enums import EstadoEquipo
 from src.services.vision_service import VisionService
 from src.services.predictive_service import PredictiveService
-
-# --- NUEVOS IMPORTS PARA LA FACTORY Y EL MAPPER ---
 from src.utils.mapper import EquipoMapper
 from src.equipo_factory import EquipoFactory
-
-# --- ENTREGABLE 7: BUILDER ---
 from src.utils.reporte_builder import ReporteBuilder
 
 # ==============================================================================

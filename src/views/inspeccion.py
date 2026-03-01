@@ -43,8 +43,8 @@ class VistaInspeccion(Vista):
         
         # 2. SI ENCUENTRA EL EQUIPO -> MUESTRA FICHA TÉCNICA
         if equipo_encontrado:
+            estado_actual = equipo_encontrado.estado.value.upper()
             st.success(f"✅ Equipo Identificado: {equipo_encontrado.modelo}")
-            
             with st.container(border=True):
                 c1, c2 = st.columns([1, 3])
                 with c1:
@@ -59,10 +59,15 @@ class VistaInspeccion(Vista):
                     obs = equipo_encontrado.calcular_obsolescencia()
                     vida_restante = max(0, 1.0 - obs)
                     st.progress(vida_restante, text=f"Vida Útil Restante: {vida_restante*100:.1f}%")
-
+            if any(palabra in estado_actual for palabra in ["MANTENIMIENTO", "BAJA"]):
+                st.warning(f"⚠️ **REGISTRO BLOQUEADO**: Este activo se encuentra en estado **{estado_actual}**.")
+                st.info("No se pueden generar nuevos reportes")
+                st.stop() 
+            
             st.divider()
-
+            
             # 3. FORMULARIO DE REPORTE DE AVERÍA
+
             st.subheader("🚨 Reportar Incidencia")
             
             with st.form("mi_formulario"):
@@ -126,7 +131,6 @@ class VistaInspeccion(Vista):
                         if foto_final:
                             try:
                                 from supabase import create_client
-                                # Asegúrate de que los nombres de tus secrets coincidan con los de tu archivo
                                 supabase_cliente = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
                                     
                                 nombre_archivo = f"{equipo_encontrado.id_activo}_{uuid.uuid4().hex[:6]}.jpg"
