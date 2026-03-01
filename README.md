@@ -59,8 +59,8 @@ Este proyecto se fundamenta en las siguientes investigaciones y desarrollos open
 3. **Configurar Secretos:**
    Crea un archivo .streamlit/secrets.toml con tus credenciales:
    ```bash
-   SUPABASE_URL = "tu_url_aqui"
-   SUPABASE_KEY = "tu_key_aqui"
+   SUPABASE_URL = "url_aqui"
+   SUPABASE_KEY = "key_aqui"
 4. **Ejecutar aplicación:**
    ```bash
    streamlit run app.py
