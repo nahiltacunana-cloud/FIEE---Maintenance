@@ -57,7 +57,7 @@ Este proyecto se fundamenta en las siguientes investigaciones y desarrollos open
    ```bash
    pip install -r requirements.txt
 3. **Configurar Secretos:**
-   Crea un archivo .streamlit/secrets.toml con tus credenciales:
+   Crea un archivo .streamlit/secrets.toml con credenciales:
    ```bash
    SUPABASE_URL = "url_aqui"
    SUPABASE_KEY = "key_aqui"
