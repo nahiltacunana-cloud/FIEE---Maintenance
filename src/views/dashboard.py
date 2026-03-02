@@ -99,9 +99,7 @@ class DashboardUtils:
         }
         builder.agregar_cuerpo(datos)
         
-        # 1. FOTO PRINCIPAL (Solo si se está haciendo un reporte EN VIVO en este momento)
-        if imagen_bytes is not None:
-            builder.agregar_evidencia(imagen_bytes) 
+        # 1. FOTO PRINCIPAL
 
         # 2. SECCIÓN DE HISTORIAL
         builder.pdf.ln(5)
@@ -151,7 +149,7 @@ class DashboardUtils:
                         builder.pdf.set_x(20)
                         builder.pdf.multi_cell(0, 6, "[Error al cargar evidencia visual]", new_x="LMARGIN", new_y="NEXT")
                         builder.pdf.set_text_color(0, 0, 0) # Volver a negro
-                        
+        
                 builder.pdf.ln(4) # Espacio antes de la siguiente incidencia
                 builder.pdf.line(10, builder.pdf.get_y(), 200, builder.pdf.get_y()) # Línea separadora
                 builder.pdf.ln(4)
@@ -270,10 +268,25 @@ class VistaDashboard(Vista):
                             es_critico = res.get('es_critico', alerta) 
                             
                             # 2. Guardamos en el historial
+                            url_foto_publica = ""
+                            try:
+                                repo = EquipoRepository() 
+                                if repo.client:
+                                    nombre_archivo = f"dash_{eq_sel.id_activo}_{int(time.time())}.png"
+                                    
+                                    repo.client.storage.from_("evidencias").upload(
+                                        nombre_archivo, 
+                                        img.getvalue(), 
+                                        {"content-type": img.type}
+                                    )
+                                    url_foto_publica = repo.client.storage.from_("evidencias").get_public_url(nombre_archivo)
+                            except Exception as e:
+                                pass 
                             eq_sel.historial_incidencias.append({
                                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                                "detalle": "Inspección Visual IA", 
-                                "dictamen_ia": diag
+                                "detalle": "Inspección Visual IA por {st.session_state.usuario}", 
+                                "dictamen_ia": diag,
+                                "url_foto": url_foto_publica
                             })
                             
                             # 3. Lógica de decisión Inteligente (Human-in-the-Loop)
@@ -322,25 +335,28 @@ class VistaDashboard(Vista):
                     st.markdown("#### 👨‍🔧 Acción Manual y Triaje")
                     # 1. Si está operativo, el profesor puede levantar un reporte directo (Pasa a REPORTADO)
                     if estado_actual_str == "OPERATIVO":
+                        st.info("💡 Si el equipo falla o ya cumplió su ciclo de vida, levanta un reporte aquí.")
+    
+                        motivo = st.text_input("¿Por qué reportas este equipo? (Opcional):", placeholder="Ej: Falla interna, muy viejo...")
+    
                         if st.button("🚩 Levantar Reporte (Enviar a Triaje)", key=f"mant_man_{eq_sel.id_activo}"):
                             eq_sel.estado = "REPORTADO"
                             eq_sel.historial_incidencias.append({
                                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                                "detalle": "REPORTE MANUAL: Equipo reportado por docente. Pendiente de Triaje."
+                                "detalle": f"REPORTE MANUAL por {st.session_state.usuario}. Motivo: {motivo}. Pendiente de Triaje."
                             })
-                            EquipoRepository().actualizar_equipo(eq_sel)
-                            st.cache_data.clear()
-                            if 'db_laboratorios' in st.session_state:
-                                del st.session_state['db_laboratorios']
-                            st.session_state.trigger = 1
-                            st.rerun()
+        
+                        EquipoRepository().actualizar_equipo(eq_sel)
+                        st.cache_data.clear()
+                        if 'db_laboratorios' in st.session_state:
+                            del st.session_state['db_laboratorios']
+                        st.session_state.trigger = 1
+                        st.rerun()
 
                     # 2. ZONA DE TRIAJE: Si el equipo está reportado, el admin decide
                     elif estado_actual_str == "REPORTADO":
-                        st.warning("⚠️ Este equipo está en TRIAJE. Requiere revisión.")
-                        
+                        st.warning("⚠️ Este equipo está en TRIAJE. Requiere revisión.")    
                         col_t1, col_t2 = st.columns(2)
-                        
                         with col_t1:
                             if st.button("✅ Falsa Alarma", key=f"btn_ok_{eq_sel.id_activo}", type="secondary", use_container_width=True):
                                 eq_sel.estado = EstadoEquipo.OPERATIVO.name
