@@ -495,7 +495,7 @@ class VistaDashboard(Vista):
         # 4. ALTA INVENTARIO
         with tab_alta:
             st.subheader("➕ Nuevo Ingreso")
-            LABS_POSIBLES = ["Laboratorio de Control", "Laboratorio de Circuitos", "Laboratorio de Máquinas", "Laboratorio FIEE"]
+            LABS_POSIBLES = ["Laboratorio de Control", "Laboratorio de Circuitos", "Laboratorio de Máquinas"]
             
             c_lab, c_tipo = st.columns(2)
             lab_dest = c_lab.selectbox("Destino:", LABS_POSIBLES)
@@ -504,7 +504,6 @@ class VistaDashboard(Vista):
                 "Laboratorio de Circuitos": ["Osciloscopio", "Multimetro"],
                 "Laboratorio de Máquinas": ["MotorInduccion", "Multimetro"],
                 "Laboratorio de Control": ["Osciloscopio", "Multimetro", "MotorInduccion"],
-                "Laboratorio FIEE": ["MotorInduccion", "Osciloscopio", "Multimetro"]
             }
             
             # Buscamos qué equipos le tocan al laboratorio seleccionado, 
