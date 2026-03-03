@@ -284,7 +284,7 @@ class VistaDashboard(Vista):
                                 pass 
                             eq_sel.historial_incidencias.append({
                                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                                "detalle": "Inspección Visual IA por {st.session_state.usuario}", 
+                                "detalle": "Inspección Visual IA por docente", 
                                 "dictamen_ia": diag,
                                 "url_foto": url_foto_publica
                             })
@@ -340,18 +340,19 @@ class VistaDashboard(Vista):
                         motivo = st.text_input("¿Por qué reportas este equipo? (Opcional):", placeholder="Ej: Falla interna, muy viejo...")
     
                         if st.button("🚩 Levantar Reporte (Enviar a Triaje)", key=f"mant_man_{eq_sel.id_activo}"):
+                            usuario_actual = st.session_state.get("usuario", "docente")
                             eq_sel.estado = "REPORTADO"
                             eq_sel.historial_incidencias.append({
                                 "fecha": datetime.now().strftime("%Y-%m-%d"),
-                                "detalle": f"REPORTE MANUAL por {st.session_state.usuario}. Motivo: {motivo}. Pendiente de Triaje."
+                                "detalle": f"REPORTE MANUAL por {usuario_actual}. Motivo: {motivo}. Pendiente de Triaje."
                             })
         
-                        EquipoRepository().actualizar_equipo(eq_sel)
-                        st.cache_data.clear()
-                        if 'db_laboratorios' in st.session_state:
-                            del st.session_state['db_laboratorios']
-                        st.session_state.trigger = 1
-                        st.rerun()
+                            EquipoRepository().actualizar_equipo(eq_sel)
+                            st.cache_data.clear()
+                            if 'db_laboratorios' in st.session_state:
+                                del st.session_state['db_laboratorios']
+                            st.session_state.trigger = 1
+                            st.rerun()
 
                     # 2. ZONA DE TRIAJE: Si el equipo está reportado, el admin decide
                     elif estado_actual_str == "REPORTADO":
@@ -389,40 +390,40 @@ class VistaDashboard(Vista):
                     obs = eq_sel.calcular_obsolescencia()
                     st.metric("Nivel de Desgaste Actual", f"{obs*100:.1f}%")
                     st.progress(min(obs, 1.0))
-                    
+                
                     st.markdown("---")
                     st.markdown("#### 🔮 Predicción IA de Falla")
-                    
+                
                     try:
                         predictor = PredictiveService()
                         fecha_estimada, grafico_fig = predictor.generar_prediccion(eq_sel)
-                        
                         st.warning(f"⚠️ Fecha estimada de fallo crítico: **{fecha_estimada}**")
-                        st.pyplot(grafico_fig) # Se muestra el gráfico predictivo
+                        st.pyplot(grafico_fig) 
                     except Exception as e:
                         st.error(f"No se pudo generar la predicción: {e}")
-                        st.info("Asegúrate de haber instalado scikit-learn y matplotlib en tu entorno.")
-                    
+                
                     st.markdown("---")
-                    
-                    # --- NUEVO BOTÓN DE DESCARGA ---
-                    imagen_bytes_puros = img.getvalue() if img is not None else None
-
-                    pdf_bytes = DashboardUtils.generar_pdf(
-                        equipo=eq_sel, 
-                        lab=getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'), 
-                        imagen_bytes=imagen_bytes_puros
-                    )
-                    
-                    if pdf_bytes is not None:
-                        st.download_button(
-                            label="📄 Descargar Ficha Técnica y Orden de Trabajo",
-                            data=pdf_bytes,
-                            file_name=f"Ficha_{eq_sel.id_activo}.pdf",
-                            mime="application/pdf"
+                
+                # --- GENERACIÓN DEL PDF ACTUALIZADO ---
+                    try:
+                        imagen_pura = img.getvalue() if (img is not None) else None
+                        pdf_bytes = DashboardUtils.generar_pdf(
+                            equipo=eq_sel,
+                            lab=getattr(eq_sel, 'ubicacion', 'Laboratorio FIEE'),
+                            imagen_bytes=imagen_pura
                         )
-                    else:
-                        st.error("⚠️ El PDF no se pudo generar (probablemente las imágenes son muy grandes para la página).")
+                    
+                        if pdf_bytes:
+                            st.download_button(
+                                label="📄 Descargar Ficha Técnica Actualizada",
+                                data=pdf_bytes,
+                                file_name=f"Ficha_{eq_sel.id_activo}.pdf",
+                                mime="application/pdf",
+                                key=f"btn_pdf_{eq_sel.id_activo}_{len(eq_sel.historial_incidencias)}"
+                            )
+                    except Exception as e:
+                        st.error(f"Error al crear PDF: {e}")
+
                     with st.expander("Historial de Eventos", expanded=True):
                         for inc in eq_sel.historial_incidencias:
                             st.caption(f"{inc.get('fecha')} | {inc.get('detalle')}")
