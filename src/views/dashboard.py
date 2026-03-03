@@ -471,6 +471,9 @@ class VistaDashboard(Vista):
                                 "detalle": f"REPARACIÓN/ALTA: {informe}"
                             })
                             EquipoRepository().actualizar_equipo(eq_rep)
+                            st.cache_data.clear()
+                            if 'db_laboratorios' in st.session_state:
+                                del st.session_state['db_laboratorios']
                             st.session_state.trigger = 1
                             st.rerun()
                             
@@ -483,6 +486,9 @@ class VistaDashboard(Vista):
                                 "detalle": f"BAJA DEFINITIVA: {informe}"
                             })
                             EquipoRepository().actualizar_equipo(eq_rep)
+                            st.cache_data.clear()
+                            if 'db_laboratorios' in st.session_state:
+                                del st.session_state['db_laboratorios']
                             st.session_state.trigger = 1
                             st.rerun()
 
