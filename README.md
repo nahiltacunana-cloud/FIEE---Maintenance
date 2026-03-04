@@ -17,7 +17,7 @@ Desarrollar una solución basada en **Programación Orientada a Objetos (POO)** 
 ### 1. Visión por Computador (IA)
 Integración con un modelo de **Deep Learning** basado en la arquitectura *Vision Transformer* (ViT), el cual fue **reentrenado (Fine-Tuning)**. Actualmente se encuentra alojado y consumido vía API desde [Hugging Face](https://huggingface.co/NahilSisai/vit-mantenimiento-fiee).
 * **Función:** Diagnóstico visual automatizado para identificar de forma objetiva los estados de desgaste y fallas en osciloscopios, multímetros y motores.
-* **Valor Técnico:** Al haber sido entrenado con imágenes reales de los laboratorios de la FIEE, el modelo elimina el sesgo humano en las inspecciones, permitiendo que la IA evalúe el estado físico real del activo antes de calcular su obsolescencia.
+* **Valor Técnico:** Al haber sido reentrenado, el modelo elimina el sesgo humano en las inspecciones, permitiendo que la IA evalúe el estado físico real del activo.
 
 ### 2. Mantenimiento Predictivo
 Implementación de algoritmos matemáticos para el cálculo del **Tiempo Útil Restante (RUL)**.
